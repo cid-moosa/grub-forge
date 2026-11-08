@@ -7,14 +7,17 @@ slide-up animation for real-time streaming terminal diagnostics.
 
 from __future__ import annotations
 
+import os
+import sys
+from pathlib import Path
 from typing import Optional
 from PyQt6.QtCore import (
     Qt, pyqtSignal, QPropertyAnimation, QEasingCurve, QRect
 )
-from PyQt6.QtGui import QFont, QGuiApplication
+from PyQt6.QtGui import QFont, QGuiApplication, QClipboard
 from PyQt6.QtWidgets import (
     QWidget, QFrame, QHBoxLayout, QVBoxLayout, QPushButton,
-    QLabel, QPlainTextEdit, QMessageBox, QSizePolicy
+    QLabel, QPlainTextEdit, QMessageBox, QSizePolicy, QFileDialog
 )
 
 from gui.widgets import TelemetryBadge
@@ -36,6 +39,14 @@ class TerminalDrawer(QFrame):
         super().__init__(parent)
         self.is_expanded = False
         self.setObjectName("terminalDrawer")
+
+        # Persistent log file path
+        cache_base = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache"))
+        self._log_file_path = cache_base / "grub-forge" / "grub-forge.log"
+        try:
+            self._log_file_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            self._log_file_path = Path("/tmp/grub-forge.log") if sys.platform.startswith("linux") else Path.home() / "grub-forge.log"
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -115,10 +126,15 @@ class TerminalDrawer(QFrame):
 
         m_layout.addStretch()
 
-        copy_btn = QPushButton("Copy Logs")
+        copy_btn = QPushButton("📋 Copy Logs")
         copy_btn.setObjectName("iconBtn")
         copy_btn.clicked.connect(self._copy_logs)
         m_layout.addWidget(copy_btn)
+
+        save_btn = QPushButton("💾 Save Log")
+        save_btn.setObjectName("iconBtn")
+        save_btn.clicked.connect(self._save_logs_dialog)
+        m_layout.addWidget(save_btn)
 
         clear_btn = QPushButton("Clear")
         clear_btn.setObjectName("iconBtn")
@@ -191,6 +207,13 @@ class TerminalDrawer(QFrame):
             pass
 
     def append_log(self, text: str):
+        # Persist line to local log file
+        try:
+            with open(self._log_file_path, "a", encoding="utf-8") as f:
+                f.write(text + "\n")
+        except Exception:
+            pass
+
         # Format prefixes with high-contrast colors
         if text.startswith("[+]"):
             prefix = "<b><font color='#a6e3a1'>[+]</font></b> "
@@ -225,5 +248,37 @@ class TerminalDrawer(QFrame):
     def _copy_logs(self):
         txt = self.terminal.toPlainText()
         if txt:
-            QGuiApplication.clipboard().setText(txt)
-            self.append_log("[✓] Console output copied to clipboard.")
+            cb = QGuiApplication.clipboard()
+            cb.setText(txt, QClipboard.Mode.Clipboard)
+            # Synchronize to X11 selection buffer for VM guest-to-host clipboards
+            try:
+                cb.setText(txt, QClipboard.Mode.Selection)
+            except Exception:
+                pass
+            self.append_log(f"[✓] Logs copied to clipboard (also auto-saved to: {self._log_file_path})")
+
+    def _save_logs_dialog(self):
+        txt = self.terminal.toPlainText()
+        if not txt:
+            QMessageBox.information(self, "Export Logs", "Console log is currently empty.")
+            return
+
+        default_dest = str(Path.home() / "grub-forge-log.txt")
+        dest_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Console Logs to File (VM to Host)",
+            default_dest,
+            "Text Log Files (*.txt *.log);;All Files (*)"
+        )
+        if dest_path:
+            try:
+                Path(dest_path).write_text(txt, encoding="utf-8")
+                self.append_log(f"[✓] Console logs saved to: {dest_path}")
+                QMessageBox.information(
+                    self,
+                    "Logs Saved",
+                    f"Console log successfully saved to:\n{dest_path}\n\nYou can access or copy this file directly to your host."
+                )
+            except Exception as e:
+                self.append_log(f"[!] Could not save log file: {e}")
+                QMessageBox.critical(self, "Save Error", f"Failed to save log file:\n{e}")

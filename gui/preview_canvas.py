@@ -49,6 +49,8 @@ class ThemeState:
     timeout_seconds: int = 5
     default_os_index: int = 0
     wallpaper_path: Optional[Path] = None
+    theme_source_dir: Optional[Path] = None
+    all_theme_images: List[Path] = field(default_factory=list)
     free_drag: bool = False
     entries: List[str] = field(default_factory=list)
 
@@ -155,12 +157,48 @@ class GrubMenuGraphicItem(QGraphicsObject):
         vw, vh = self.state.resolution
         scale_ref = vw / 1920.0
 
-        # Draw Menu Box Container
-        menu_bg = QColor(24, 24, 37, 215)
-        border_col = QColor(self.state.colors.menu_box_border)
-        painter.setPen(QPen(border_col, 1.5))
-        painter.setBrush(QBrush(menu_bg))
-        painter.drawRoundedRect(rect, 8 * scale_ref, 8 * scale_ref)
+        canvas_view: Optional[BootPreviewCanvas] = self.scene().views()[0] if self.scene() and self.scene().views() else None
+        box_slices = canvas_view._box_slices if canvas_view else None
+
+        # Draw Menu Box Container (9-slice if available from theme, else vector rounded rect)
+        if box_slices and "c" in box_slices and not box_slices["c"].isNull():
+            nw = box_slices.get("nw")
+            ne = box_slices.get("ne")
+            sw = box_slices.get("sw")
+            se = box_slices.get("se")
+            n = box_slices.get("n")
+            s = box_slices.get("s")
+            w = box_slices.get("w")
+            e = box_slices.get("e")
+            c = box_slices.get("c")
+
+            cw = (nw.width() if nw else 16) * scale_ref
+            ch = (nw.height() if nw else 16) * scale_ref
+
+            # Center fill
+            if c:
+                painter.drawPixmap(rect.toRect(), c)
+            # Top & Bottom edges
+            if n:
+                painter.drawPixmap(QRectF(rect.x() + cw, rect.y(), rect.width() - (cw * 2), ch).toRect(), n)
+            if s:
+                painter.drawPixmap(QRectF(rect.x() + cw, rect.bottom() - ch, rect.width() - (cw * 2), ch).toRect(), s)
+            # Left & Right edges
+            if w:
+                painter.drawPixmap(QRectF(rect.x(), rect.y() + ch, cw, rect.height() - (ch * 2)).toRect(), w)
+            if e:
+                painter.drawPixmap(QRectF(rect.right() - cw, rect.y() + ch, cw, rect.height() - (ch * 2)).toRect(), e)
+            # Corners
+            if nw: painter.drawPixmap(QRectF(rect.x(), rect.y(), cw, ch).toRect(), nw)
+            if ne: painter.drawPixmap(QRectF(rect.right() - cw, rect.y(), cw, ch).toRect(), ne)
+            if sw: painter.drawPixmap(QRectF(rect.x(), rect.bottom() - ch, cw, ch).toRect(), sw)
+            if se: painter.drawPixmap(QRectF(rect.right() - cw, rect.bottom() - ch, cw, ch).toRect(), se)
+        else:
+            menu_bg = QColor(24, 24, 37, 215)
+            border_col = QColor(self.state.colors.menu_box_border)
+            painter.setPen(QPen(border_col, 1.5))
+            painter.setBrush(QBrush(menu_bg))
+            painter.drawRoundedRect(rect, 8 * scale_ref, 8 * scale_ref)
 
         if self.state.free_drag:
             # Draw draggable indicator border
@@ -293,6 +331,7 @@ class BootPreviewCanvas(QGraphicsView):
         self._slice_bar_w: Optional[QPixmap] = None
         self._slice_bar_c: Optional[QPixmap] = None
         self._slice_bar_e: Optional[QPixmap] = None
+        self._box_slices: dict[str, QPixmap] = {}
 
         # Timeout Animation Simulation
         self.timeout_remaining = self.state.timeout_seconds
@@ -354,6 +393,26 @@ class BootPreviewCanvas(QGraphicsView):
             self._slice_bar_w = QPixmap(str(bw_file))
             self._slice_bar_c = QPixmap(str(bc_file))
             self._slice_bar_e = QPixmap(str(be_file))
+
+        # Slices for menu / terminal box (9-slice)
+        self._box_slices.clear()
+        for box_pfx in ("terminal_box", "menu_box", "box"):
+            c_cand = theme_dir / f"{box_pfx}_c.png"
+            if c_cand.is_file():
+                for key in ("nw", "n", "ne", "w", "c", "e", "sw", "s", "se"):
+                    kf = theme_dir / f"{box_pfx}_{key}.png"
+                    if kf.is_file():
+                        self._box_slices[key] = QPixmap(str(kf))
+                break
+
+        # Slices from icons/ subfolder if present
+        icons_dir = theme_dir / "icons"
+        if icons_dir.is_dir():
+            for p in icons_dir.glob("*.png"):
+                pix = QPixmap(str(p))
+                if not pix.isNull():
+                    self._distro_icons[p.stem.lower()] = pix
+
         self._scene.update()
 
     def apply_state(self, new_state: ThemeState):

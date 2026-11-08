@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Dict
 from PIL import Image
@@ -29,6 +29,12 @@ class DiscoveredTheme:
     is_system: bool = True
     author: str = "System"
     title_text: str = "GRUB Boot Menu"
+    all_images: List[Path] = field(default_factory=list)
+    highlight_slices: Dict[str, Path] = field(default_factory=dict)
+    box_slices: Dict[str, Path] = field(default_factory=dict)
+    progressbar_slices: Dict[str, Path] = field(default_factory=dict)
+    icon_images: Dict[str, Path] = field(default_factory=dict)
+    fonts: List[Path] = field(default_factory=list)
 
 
 class ThemeScanner:
@@ -176,6 +182,48 @@ class ThemeScanner:
             except Exception:
                 pass
 
+        # Collect ALL theme images and assets (wallpapers, slices, frames, icons, fonts)
+        all_images: List[Path] = []
+        highlight_slices: Dict[str, Path] = {}
+        box_slices: Dict[str, Path] = {}
+        progressbar_slices: Dict[str, Path] = {}
+        icon_images: Dict[str, Path] = {}
+        fonts: List[Path] = []
+
+        try:
+            for f in sorted(theme_dir.iterdir()):
+                if f.is_file():
+                    ext = f.suffix.lower()
+                    if ext in (".png", ".jpg", ".jpeg", ".tga", ".bmp", ".svg"):
+                        all_images.append(f)
+                        fname = f.stem.lower()
+                        # Categorize highlight slices
+                        if "select" in fname or "highlight" in fname:
+                            for key in ("w", "c", "e", "n", "s", "nw", "ne", "sw", "se"):
+                                if fname.endswith(f"_{key}"):
+                                    highlight_slices[key] = f
+                        # Categorize terminal / menu box slices
+                        elif "box" in fname or "frame" in fname:
+                            for key in ("nw", "n", "ne", "w", "c", "e", "sw", "s", "se"):
+                                if fname.endswith(f"_{key}"):
+                                    box_slices[key] = f
+                        # Categorize progress bar slices
+                        elif "bar" in fname or "progress" in fname:
+                            for key in ("w", "c", "e"):
+                                if fname.endswith(f"_{key}"):
+                                    progressbar_slices[key] = f
+                    elif ext == ".pf2":
+                        fonts.append(f)
+
+            # Check icons/ subdirectory
+            icons_dir = theme_dir / "icons"
+            if icons_dir.is_dir():
+                for icon_file in sorted(icons_dir.glob("*.png")):
+                    all_images.append(icon_file)
+                    icon_images[icon_file.stem.lower()] = icon_file
+        except Exception:
+            pass
+
         colors = ThemeColors(
             desktop_background=desktop_color if desktop_color.startswith("#") else "#1e1e2e",
             title_color=title_color if title_color.startswith("#") else "#cdd6f4",
@@ -194,7 +242,13 @@ class ThemeScanner:
             theme_txt=theme_txt,
             colors=colors,
             wallpaper_path=wallpaper_path,
-            title_text=title_text
+            title_text=title_text,
+            all_images=all_images,
+            highlight_slices=highlight_slices,
+            box_slices=box_slices,
+            progressbar_slices=progressbar_slices,
+            icon_images=icon_images,
+            fonts=fonts
         )
 
     def detect_active_system_theme(
@@ -288,6 +342,13 @@ class ThemeScanner:
             target_dir = bundled_dir / "kali"
 
         bg_file = target_dir / "background.png"
+        theme_txt_file = target_dir / "theme.txt"
+        if theme_txt_file.is_file():
+            parsed = self.parse_theme_txt(target_dir, theme_txt_file)
+            if parsed:
+                parsed.name = f"{d_key.capitalize()} Boot Theme"
+                return parsed
+
         if bg_file.is_file():
             from backend.theme_engine import PRESETS
             preset = PRESETS.get(f"{d_key}_dragon") or PRESETS.get(f"{d_key}_minimal") or PRESETS.get(f"{d_key}_blue") or PRESETS.get("kali_dragon")
@@ -297,10 +358,11 @@ class ThemeScanner:
                 id=f"{d_key}_default",
                 name=f"{d_key.capitalize()} Boot Theme",
                 directory=target_dir,
-                theme_txt=target_dir / "theme.txt",
+                theme_txt=theme_txt_file,
                 colors=colors,
                 wallpaper_path=bg_file,
-                title_text=title_text
+                title_text=title_text,
+                all_images=[bg_file]
             )
 
         return None

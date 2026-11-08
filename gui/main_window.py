@@ -163,6 +163,8 @@ class MainWindow(QMainWindow):
             self.init_preset_id = self.current_system_theme.id
             self.theme_state.colors = self.current_system_theme.colors
             self.theme_state.title_text = self.current_system_theme.title_text
+            self.theme_state.theme_source_dir = self.current_system_theme.directory
+            self.theme_state.all_theme_images = list(self.current_system_theme.all_images)
             if self.current_system_theme.wallpaper_path and self.current_system_theme.wallpaper_path.is_file():
                 self.theme_state.wallpaper_path = self.current_system_theme.wallpaper_path
             elif distro_preset.wallpaper_path and distro_preset.wallpaper_path.is_file():
@@ -171,8 +173,10 @@ class MainWindow(QMainWindow):
             self.init_preset_id = default_preset_id
             self.theme_state.colors = distro_preset.colors
             self.theme_state.title_text = distro_preset.title_text
+            self.theme_state.theme_source_dir = distro_preset.wallpaper_path.parent if distro_preset.wallpaper_path else None
             if distro_preset.wallpaper_path and distro_preset.wallpaper_path.is_file():
                 self.theme_state.wallpaper_path = distro_preset.wallpaper_path
+                self.theme_state.all_theme_images = [distro_preset.wallpaper_path]
 
         # Parse authentic boot menu entries
         self.theme_state.entries = GrubMenuParser.parse_entries(
@@ -189,6 +193,7 @@ class MainWindow(QMainWindow):
         if self.current_system_theme and self.current_system_theme.directory:
             self.canvas.load_slices_from_dir(self.current_system_theme.directory)
         self._sync_state_to_canvas()
+        self._refresh_artwork_gallery()
         self._log_initial_diagnostics()
 
     def _init_ui(self):
@@ -589,6 +594,22 @@ class MainWindow(QMainWindow):
         self.btn_clear_bg.clicked.connect(self._clear_wallpaper)
         layout.addWidget(self.btn_clear_bg)
 
+        # Section: All Discovered Theme Assets (Wallpapers, 9-Slices, Frames, Icons)
+        layout.addSpacing(10)
+        gallery_hdr = QLabel("THEME ASSET GALLERY & ALL FETCHED IMAGES")
+        gallery_hdr.setStyleSheet("color: #a6adc8; font-weight: 700; font-size: 11px; letter-spacing: 0.5px;")
+        layout.addWidget(gallery_hdr)
+
+        self.gallery_status_lbl = QLabel("Scanning theme images...")
+        self.gallery_status_lbl.setStyleSheet("color: #6c7086; font-size: 11px; font-style: italic;")
+        layout.addWidget(self.gallery_status_lbl)
+
+        self.gallery_container = QWidget()
+        self.gallery_layout = QVBoxLayout(self.gallery_container)
+        self.gallery_layout.setContentsMargins(0, 0, 0, 0)
+        self.gallery_layout.setSpacing(6)
+        layout.addWidget(self.gallery_container)
+
         layout.addStretch()
         scroll.setWidget(content)
         return scroll
@@ -983,8 +1004,13 @@ class MainWindow(QMainWindow):
             self.theme_state.title_text = preset.title_text
 
         if preset.wallpaper_path and preset.wallpaper_path.is_file():
+            self.theme_state.theme_source_dir = preset.wallpaper_path.parent
+            self.theme_state.all_theme_images = [f for f in sorted(preset.wallpaper_path.parent.glob("*.png")) if f.is_file()]
             self._on_wallpaper_selected(preset.wallpaper_path)
+            self.canvas.load_slices_from_dir(preset.wallpaper_path.parent)
         else:
+            self.theme_state.theme_source_dir = None
+            self.theme_state.all_theme_images = []
             self._clear_wallpaper()
 
         # Update controls
@@ -996,6 +1022,7 @@ class MainWindow(QMainWindow):
         self.col_hl_border.set_color(self.theme_state.colors.highlight_border)
 
         self._sync_state_to_canvas()
+        self._refresh_artwork_gallery()
         self.drawer.append_log(f"[+] Loaded preset: {preset.name}")
 
     def _reset_to_custom_blueprint(self):
@@ -1031,6 +1058,97 @@ class MainWindow(QMainWindow):
         self.drop_zone.set_file(None)
         self._sync_state_to_canvas()
         self.drawer.append_log("[*] Wallpaper cleared. Solid background active.")
+
+    def _refresh_artwork_gallery(self):
+        """Renders live visual cards for ALL images discovered in the active theme directory."""
+        if not hasattr(self, "gallery_layout"):
+            return
+
+        while self.gallery_layout.count() > 0:
+            item = self.gallery_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        images = list(self.theme_state.all_theme_images)
+        if not images and self.theme_state.theme_source_dir and self.theme_state.theme_source_dir.is_dir():
+            for f in sorted(self.theme_state.theme_source_dir.iterdir()):
+                if f.is_file() and f.suffix.lower() in (".png", ".jpg", ".jpeg", ".tga"):
+                    images.append(f)
+
+        if not images and self.theme_state.wallpaper_path and self.theme_state.wallpaper_path.is_file():
+            images = [self.theme_state.wallpaper_path]
+
+        if not images:
+            self.gallery_status_lbl.setText("No additional theme images found.")
+            return
+
+        self.gallery_status_lbl.setText(f"📸 {len(images)} Theme Assets Fetched from Filesystem:")
+        self.gallery_status_lbl.setStyleSheet("color: #a6e3a1; font-weight: 600; font-size: 11px;")
+
+        for img_path in images:
+            card = QFrame()
+            card.setStyleSheet("background: #181825; border: 1px solid #313244; border-radius: 6px;")
+            c_layout = QHBoxLayout(card)
+            c_layout.setContentsMargins(8, 6, 8, 6)
+            c_layout.setSpacing(10)
+
+            # Mini preview thumbnail
+            thumb_lbl = QLabel()
+            thumb_lbl.setFixedSize(40, 40)
+            thumb_lbl.setStyleSheet("background: #11111b; border-radius: 4px; border: 1px solid #232338;")
+            thumb_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            try:
+                pix = QPixmap(str(img_path))
+                if not pix.isNull():
+                    scaled = pix.scaled(38, 38, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    thumb_lbl.setPixmap(scaled)
+            except Exception:
+                thumb_lbl.setText("🖼")
+            c_layout.addWidget(thumb_lbl)
+
+            # File info
+            info_layout = QVBoxLayout()
+            info_layout.setSpacing(2)
+            name_lbl = QLabel(img_path.name)
+            name_lbl.setStyleSheet("color: #cdd6f4; font-weight: 600; font-size: 11px;")
+
+            # Purpose tag
+            fn_low = img_path.name.lower()
+            if any(k in fn_low for k in ("background", "grub-16x9", "grub-4x3", "desktop")):
+                tag = "Wallpaper / Canvas"
+            elif any(k in fn_low for k in ("select", "highlight")):
+                tag = "Highlight Slice"
+            elif any(k in fn_low for k in ("box", "frame", "terminal")):
+                tag = "9-Slice Window Frame"
+            elif "bar" in fn_low or "progress" in fn_low:
+                tag = "Progress Bar Slice"
+            elif "icon" in str(img_path).lower():
+                tag = "OS Menu Icon"
+            else:
+                tag = "Theme Asset"
+
+            try:
+                sz_kb = round(img_path.stat().st_size / 1024, 1)
+                meta_str = f"{tag} • {sz_kb} KB"
+            except Exception:
+                meta_str = tag
+
+            meta_lbl = QLabel(meta_str)
+            meta_lbl.setStyleSheet("color: #a6adc8; font-size: 10px;")
+            info_layout.addWidget(name_lbl)
+            info_layout.addWidget(meta_lbl)
+            c_layout.addLayout(info_layout, stretch=1)
+
+            # Action button
+            if any(k in fn_low for k in ("background", "grub", "bg", "wallpaper", "desktop", ".png", ".jpg")):
+                btn_set_bg = QPushButton("Set Active")
+                btn_set_bg.setObjectName("secondaryBtn")
+                btn_set_bg.setFixedHeight(24)
+                btn_set_bg.setStyleSheet("font-size: 10px; padding: 2px 8px;")
+                btn_set_bg.clicked.connect(lambda checked, p=img_path: self._on_wallpaper_selected(p))
+                c_layout.addWidget(btn_set_bg)
+
+            self.gallery_layout.addWidget(card)
 
     def _apply_layout_preset(self, left: float, top: float, width: float, height: float):
         self.spin_left.setValue(left)
@@ -1180,6 +1298,7 @@ class MainWindow(QMainWindow):
             timeout_seconds=self.theme_state.timeout_seconds,
             default_os_index=self.theme_state.default_os_index,
             enable_os_prober=self.chk_os_prober.isChecked(),
+            source_theme_dir=self.theme_state.theme_source_dir,
             dry_run=True
         )
 
@@ -1300,6 +1419,8 @@ class MainWindow(QMainWindow):
         for card in self._preset_cards:
             card.set_active(card.preset_id == disc.id)
 
+        self.theme_state.theme_source_dir = disc.directory
+        self.theme_state.all_theme_images = list(disc.all_images)
         self.theme_state.colors = disc.colors
         self.theme_state.title_text = disc.title_text
         if disc.wallpaper_path and disc.wallpaper_path.is_file():
@@ -1318,7 +1439,8 @@ class MainWindow(QMainWindow):
             self.canvas.load_slices_from_dir(disc.directory)
 
         self._sync_state_to_canvas()
-        self.drawer.append_log(f"[+] Loaded installed theme: {disc.name}")
+        self._refresh_artwork_gallery()
+        self.drawer.append_log(f"[+] Loaded installed theme: {disc.name} ({len(disc.all_images)} assets)")
 
     def _show_snapshot_history(self):
         """Displays interactive snapshot history dialog with configuration diffs."""
@@ -1340,6 +1462,7 @@ class MainWindow(QMainWindow):
             timeout_seconds=self.theme_state.timeout_seconds,
             default_os_index=self.theme_state.default_os_index,
             enable_os_prober=self.chk_os_prober.isChecked(),
+            source_theme_dir=self.theme_state.theme_source_dir,
             dry_run=True
         )
 
@@ -1414,6 +1537,7 @@ class MainWindow(QMainWindow):
                 timeout_seconds=self.theme_state.timeout_seconds,
                 default_os_index=self.theme_state.default_os_index,
                 enable_os_prober=self.chk_os_prober.isChecked(),
+                source_theme_dir=self.theme_state.theme_source_dir,
                 dry_run=dry_run
             )
 

@@ -84,10 +84,12 @@ class StagingManager:
         timeout_seconds: int,
         default_os_index: int,
         enable_os_prober: bool = True,
+        source_theme_dir: Optional[Path] = None,
         dry_run: bool = False
     ) -> Path:
         """
         Builds the complete unprivileged staging directory.
+        Preserves and stages ALL theme assets (slices, icons, frames, fonts) from source theme.
         Returns the path to the staged directory containing metadata.json.
         """
         # 1. Clean and initialize staging directory
@@ -98,24 +100,47 @@ class StagingManager:
         theme_stage_dir = self.staging_root / "theme"
         theme_stage_dir.mkdir(parents=True, exist_ok=True)
 
-        # 2. Stage Wallpaper (Verified 8-bit uncompressed RGB PNG via Pillow)
+        # 2. Copy ALL existing theme assets if basing on an existing theme directory
+        if source_theme_dir and source_theme_dir.is_dir():
+            try:
+                for item in source_theme_dir.iterdir():
+                    if item.is_file():
+                        # Copy all graphics and fonts, exclude theme.txt which is regenerated
+                        if item.name != "theme.txt":
+                            shutil.copy2(item, theme_stage_dir / item.name)
+                    elif item.is_dir() and item.name in ("icons", "fonts"):
+                        shutil.copytree(item, theme_stage_dir / item.name, dirs_exist_ok=True)
+            except Exception:
+                pass
+
+        # 3. Stage Wallpaper (Verified 8-bit uncompressed RGB PNG via Pillow)
         bg_dest = theme_stage_dir / "background.png"
         if wallpaper_source and wallpaper_source.is_file():
             AssetProcessor.normalize_wallpaper(wallpaper_source, bg_dest, target_resolution=resolution)
-        else:
+            # If the theme uses grub-16x9.png (Kali Linux), sync it as well
+            if (theme_stage_dir / "grub-16x9.png").exists() or (source_theme_dir and (source_theme_dir / "grub-16x9.png").exists()):
+                AssetProcessor.normalize_wallpaper(wallpaper_source, theme_stage_dir / "grub-16x9.png", target_resolution=resolution)
+        elif not bg_dest.exists():
             AssetProcessor.generate_solid_wallpaper(bg_dest, color_hex=colors.desktop_background, target_resolution=resolution)
 
-        # 3. Stage Highlight Slices & Progressbar Slices
-        AssetProcessor.generate_highlight_slices(
-            theme_stage_dir,
-            bg_hex=colors.highlight_background,
-            border_hex=colors.highlight_border
+        # 4. Stage Highlight Slices & Progressbar Slices (generate only if missing)
+        has_highlights = any(
+            (theme_stage_dir / f"{pfx}_c.png").is_file() for pfx in ("highlight", "select")
         )
-        AssetProcessor.generate_progressbar_slices(
-            theme_stage_dir,
-            fill_hex=colors.highlight_border,
-            track_hex=colors.highlight_background
-        )
+        if not has_highlights:
+            AssetProcessor.generate_highlight_slices(
+                theme_stage_dir,
+                bg_hex=colors.highlight_background,
+                border_hex=colors.highlight_border
+            )
+
+        has_bars = (theme_stage_dir / "bar_c.png").is_file()
+        if not has_bars:
+            AssetProcessor.generate_progressbar_slices(
+                theme_stage_dir,
+                fill_hex=colors.highlight_border,
+                track_hex=colors.highlight_background
+            )
 
         # 4. Stage theme.txt
         theme_engine = ThemeEngine(self.staging_root)

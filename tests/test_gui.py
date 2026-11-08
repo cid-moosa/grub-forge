@@ -103,5 +103,18 @@ class TestWorkstationGUI(unittest.TestCase):
         window.close()
 
 
+    def test_terminal_drawer_logging_and_copy(self):
+        window = MainWindow()
+        window.drawer.append_log("[*] Test diagnostic entry")
+        txt = window.drawer.terminal.toPlainText()
+        self.assertIn("Test diagnostic entry", txt)
+        window.drawer._copy_logs()
+        self.assertTrue(window.drawer._log_file_path.exists())
+        # Test artwork gallery refresh
+        window._refresh_artwork_gallery()
+        self.assertIsNotNone(window.gallery_layout)
+        window.close()
+
+
 if __name__ == "__main__":
     unittest.main()

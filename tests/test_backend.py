@@ -223,6 +223,10 @@ class TestThemeScanner(unittest.TestCase):
             )
             bg_png = theme_dir / "background.png"
             bg_png.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR...")
+            box_c = theme_dir / "terminal_box_c.png"
+            box_c.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR...")
+            sel_c = theme_dir / "select_c.png"
+            sel_c.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR...")
 
             default_grub.write_text(f'GRUB_THEME="{theme_txt}"\nGRUB_TIMEOUT=5\n')
 
@@ -238,6 +242,13 @@ class TestThemeScanner(unittest.TestCase):
             self.assertEqual(detected.wallpaper_path, bg_png)
             self.assertEqual(detected.colors.item_color, "#ffffff")
             self.assertEqual(detected.colors.selected_item_color, "#00ffcc")
+            # Verify that all theme images are captured
+            self.assertEqual(len(detected.all_images), 3)
+            self.assertIn(bg_png, detected.all_images)
+            self.assertIn(box_c, detected.all_images)
+            self.assertIn(sel_c, detected.all_images)
+            self.assertIn("c", detected.box_slices)
+            self.assertIn("c", detected.highlight_slices)
 
 
 class TestExecutorAndWorker(unittest.TestCase):
