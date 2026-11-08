@@ -98,28 +98,25 @@ class ThemeScanner:
 
         for line in content.splitlines():
             line = line.strip()
-            if not line or line.startswith("#"):
+            if not line or line.startswith("#") or line.startswith("+") or line.startswith("}"):
                 continue
 
-            if ":" in line and not line.startswith("+"):
-                k, v = line.split(":", 1)
-                k = k.strip().lower()
+            delimiter = ":" if ":" in line else ("=" if "=" in line else None)
+            if delimiter:
+                k, v = line.split(delimiter, 1)
+                k = k.strip().lower().replace("-", "_")
                 v = v.strip().strip('"').strip("'")
-                if k == "title-text":
+                if k in ("title_text", "title"):
                     title_text = v
-                elif k == "desktop-image":
+                elif k in ("desktop_image", "desktop_image_path"):
                     desktop_img_name = v
-                elif k == "desktop-color":
+                elif k == "desktop_color":
                     desktop_color = v
-                elif k == "title-color":
+                elif k == "title_color":
                     title_color = v
-            elif "=" in line:
-                k, v = line.split("=", 1)
-                k = k.strip().lower()
-                v = v.strip().strip('"').strip("'")
-                if k == "item_color":
+                elif k == "item_color":
                     item_color = v
-                elif k == "selected_item_color":
+                elif k in ("selected_item_color", "selected_color"):
                     selected_item_color = v
 
         wallpaper_path = None
@@ -127,12 +124,19 @@ class ThemeScanner:
             cand = theme_dir / desktop_img_name
             if cand.is_file():
                 wallpaper_path = cand
+            else:
+                # Case-insensitive lookup
+                for f in theme_dir.iterdir():
+                    if f.name.lower() == desktop_img_name.lower() and f.is_file():
+                        wallpaper_path = f
+                        break
+
         if not wallpaper_path:
-            # Fallback search for common names
-            for name in ("background.png", "background.jpg", "bg.png", "bg.jpg"):
-                cand = theme_dir / name
-                if cand.is_file():
-                    wallpaper_path = cand
+            # Fallback search for common background image filenames
+            for pattern in ("*background*", "*bg*", "*wallpaper*", "*.png", "*.jpg", "*.jpeg", "*.tga"):
+                matches = [f for f in theme_dir.glob(pattern) if f.is_file() and not f.name.startswith("bar_") and not f.name.startswith("highlight_") and not f.name.startswith("select_")]
+                if matches:
+                    wallpaper_path = matches[0]
                     break
 
         colors = ThemeColors(
@@ -155,3 +159,101 @@ class ThemeScanner:
             wallpaper_path=wallpaper_path,
             title_text=title_text
         )
+
+    def detect_active_system_theme(
+        self,
+        default_grub_path: Optional[Path] = None,
+        distro_id: str = ""
+    ) -> Optional[DiscoveredTheme]:
+        """
+        Fetches the current active GRUB boot theme from the system files:
+        1. Checks GRUB_THEME or GRUB_BACKGROUND in /etc/default/grub.
+        2. Scans system theme directories (/boot/grub/themes, /usr/share/grub/themes) for distro themes.
+        3. Returns the active theme with its real background image, colors, and layout.
+        """
+        # 1. Inspect /etc/default/grub for GRUB_THEME
+        if default_grub_path and default_grub_path.is_file():
+            try:
+                content = default_grub_path.read_text(encoding="utf-8", errors="replace")
+                theme_val = None
+                bg_val = None
+                for line in content.splitlines():
+                    line = line.strip()
+                    if line.startswith("#"):
+                        continue
+                    if line.startswith("GRUB_THEME=") or line.startswith("GRUB_THEME "):
+                        _, val = line.split("=", 1)
+                        theme_val = val.strip().strip('"').strip("'")
+                    elif line.startswith("GRUB_BACKGROUND=") or line.startswith("GRUB_BACKGROUND "):
+                        _, val = line.split("=", 1)
+                        bg_val = val.strip().strip('"').strip("'")
+
+                if theme_val:
+                    t_path = self._apply_prefix(Path(theme_val))
+                    if t_path.is_file():
+                        theme = self.parse_theme_txt(t_path.parent, t_path)
+                        if theme:
+                            theme.name = f"{theme.name} (Active System Theme)"
+                            return theme
+                    elif t_path.is_dir() and (t_path / "theme.txt").is_file():
+                        theme = self.parse_theme_txt(t_path, t_path / "theme.txt")
+                        if theme:
+                            theme.name = f"{theme.name} (Active System Theme)"
+                            return theme
+
+                if bg_val:
+                    b_path = self._apply_prefix(Path(bg_val))
+                    if b_path.is_file():
+                        return DiscoveredTheme(
+                            id="custom_background",
+                            name="Current GRUB Background",
+                            directory=b_path.parent,
+                            theme_txt=b_path.parent / "theme.txt",
+                            colors=ThemeColors(),
+                            wallpaper_path=b_path,
+                            title_text="GRUB Boot Menu"
+                        )
+            except Exception:
+                pass
+
+        # 2. Check installed distro themes in search paths
+        installed = self.scan_installed_themes()
+        if installed:
+            d_clean = (distro_id or "").lower()
+            if d_clean:
+                # Look for matching distro theme first (e.g. kali, arch, debian, fedora)
+                for t in installed:
+                    t_id = t.id.lower()
+                    if d_clean in t_id or t_id in d_clean:
+                        t.name = f"{t.name} (Installed Distro Theme)"
+                        return t
+
+            # Fallback to the first installed theme found on disk
+            first_theme = installed[0]
+            first_theme.name = f"{first_theme.name} (Installed Theme)"
+            return first_theme
+
+        # 3. Fallback to bundled authentic distro assets in data/themes
+        bundled_dir = Path(__file__).resolve().parent.parent / "data" / "themes"
+        d_key = distro_id.lower() if distro_id else "kali"
+        target_dir = bundled_dir / d_key
+        if not target_dir.is_dir():
+            target_dir = bundled_dir / "kali"
+
+        bg_file = target_dir / "background.png"
+        if bg_file.is_file():
+            from backend.theme_engine import PRESETS
+            preset = PRESETS.get(f"{d_key}_dragon") or PRESETS.get(f"{d_key}_minimal") or PRESETS.get(f"{d_key}_blue") or PRESETS.get("kali_dragon")
+            colors = preset.colors if preset else ThemeColors()
+            title_text = preset.title_text if preset else f"{d_key.capitalize()} Linux"
+            return DiscoveredTheme(
+                id=f"{d_key}_default",
+                name=f"{d_key.capitalize()} Boot Theme",
+                directory=target_dir,
+                theme_txt=target_dir / "theme.txt",
+                colors=colors,
+                wallpaper_path=bg_file,
+                title_text=title_text
+            )
+
+        return None

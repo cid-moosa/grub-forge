@@ -60,23 +60,47 @@ class GrubMenuParser:
 
     @staticmethod
     def parse_entries(cfg_path: Optional[Path], fallback_distro: str = "Linux") -> List[str]:
+        """
+        Parses authentic bootloader entries from grub.cfg or scans /boot for installed kernels.
+        """
         entries: List[str] = []
+
+        # 1. Parse real grub.cfg if readable
         if cfg_path and cfg_path.is_file():
             try:
                 content = cfg_path.read_text(encoding="utf-8", errors="replace")
-                pattern = r"menuentry\s+['\"]([^'\"]+)['\"]"
-                matches = re.findall(pattern, content)
+                # Match both top-level menuentry and submenu items
+                pattern = r"^\s*(?:menuentry|submenu)\s+['\"]([^'\"]+)['\"]"
+                matches = re.findall(pattern, content, re.MULTILINE)
                 for entry in matches:
                     clean = entry.strip()
-                    if clean and clean not in entries:
+                    # Filter out internal GRUB script blocks or empty strings
+                    if clean and clean not in entries and not clean.startswith("$"):
                         entries.append(clean)
             except Exception:
                 pass
 
+        # 2. If unreadable (e.g. chmod 600 on /boot/grub/grub.cfg), inspect /boot for real vmlinuz kernels
+        if not entries:
+            try:
+                boot_dir = Path("/boot")
+                if boot_dir.is_dir():
+                    kernels = sorted(boot_dir.glob("vmlinuz-*"), key=os.path.getmtime, reverse=True)
+                    if kernels:
+                        d_name = fallback_distro or "Linux"
+                        latest_k = kernels[0].name.replace("vmlinuz-", "")
+                        entries.append(f"{d_name}, with Linux {latest_k}")
+                        entries.append(f"Advanced options for {d_name}")
+                        entries.append(f"{d_name}, with Linux {latest_k} (recovery mode)")
+                        entries.append("UEFI Firmware Settings")
+            except Exception:
+                pass
+
+        # 3. Fallback to clean distro-specific entries
         if not entries:
             d_name = fallback_distro or "Linux"
             entries = [
-                f"{d_name} (linux 6.12.1-default)",
+                f"{d_name} (linux-default)",
                 f"Advanced options for {d_name}",
                 f"{d_name} (recovery mode)",
                 "UEFI Firmware Settings"

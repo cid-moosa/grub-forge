@@ -10,6 +10,7 @@ from pathlib import Path
 from backend.fs_detector import DistroInfo, FSDetector, GrubPaths, GrubTools
 from backend.safety import ASTGrubParser, SafetyManager
 from backend.theme_engine import ThemeColors, ThemeEngine, AssetProcessor, PRESETS
+from backend.theme_scanner import ThemeScanner
 from gui.preview_canvas import GrubMenuParser
 
 
@@ -200,6 +201,42 @@ class TestGrubMenuParser(unittest.TestCase):
         finally:
             if temp_path.exists():
                 temp_path.unlink()
+
+
+class TestThemeScanner(unittest.TestCase):
+    def test_detect_active_system_theme(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            etc_dir = root / "etc" / "default"
+            etc_dir.mkdir(parents=True)
+            default_grub = etc_dir / "grub"
+
+            theme_dir = root / "boot" / "grub" / "themes" / "kali"
+            theme_dir.mkdir(parents=True)
+            theme_txt = theme_dir / "theme.txt"
+            theme_txt.write_text(
+                'title-text: "Kali GNU/Linux"\n'
+                'desktop-image: "background.png"\n'
+                'item_color: "#ffffff"\n'
+                'selected_item_color: "#00ffcc"\n'
+            )
+            bg_png = theme_dir / "background.png"
+            bg_png.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR...")
+
+            default_grub.write_text(f'GRUB_THEME="{theme_txt}"\nGRUB_TIMEOUT=5\n')
+
+            scanner = ThemeScanner(search_paths=[theme_dir.parent])
+            detected = scanner.detect_active_system_theme(
+                default_grub_path=default_grub,
+                distro_id="kali"
+            )
+
+            self.assertIsNotNone(detected)
+            self.assertIn("Kali", detected.name)
+            self.assertEqual(detected.directory, theme_dir)
+            self.assertEqual(detected.wallpaper_path, bg_png)
+            self.assertEqual(detected.colors.item_color, "#ffffff")
+            self.assertEqual(detected.colors.selected_item_color, "#00ffcc")
 
 
 if __name__ == "__main__":

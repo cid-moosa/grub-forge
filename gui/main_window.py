@@ -118,36 +118,60 @@ class MainWindow(QMainWindow):
         self.safety = SafetyManager(self.telemetry.paths, self.telemetry.tools, self.telemetry.distro)
         self.theme_engine = ThemeEngine(self.telemetry.paths.theme_dir)
         self.font_manager = FontManager(root_prefix=root_prefix)
+        self.theme_scanner = ThemeScanner(
+            search_paths=[
+                self.telemetry.paths.theme_dir,
+                self.telemetry.paths.fallback_theme_dir,
+                Path("/boot/grub/themes"),
+                Path("/boot/grub2/themes"),
+                Path("/usr/share/grub/themes"),
+                Path("/usr/share/desktop-base/active-theme/grub"),
+                Path("/usr/share/desktop-base/kali-theme/grub"),
+            ],
+            root_prefix=root_prefix
+        )
         self.executor = CommandExecutor(self)
         self.qemu_runner = QemuRunner()
 
-        # 2. Central State Model - Auto-select Distro Preset or Kali Linux by default
-        d_id = (self.telemetry.distro.distro_id or "").lower()
-        if "kali" in d_id:
-            init_preset_id = "kali_dragon"
-        elif "arch" in d_id:
-            init_preset_id = "arch_minimal"
-        elif "fedora" in d_id or "rhel" in d_id:
-            init_preset_id = "fedora_blue"
-        elif "debian" in d_id:
-            init_preset_id = "debian_crimson"
-        elif "ubuntu" in d_id:
-            init_preset_id = "ubuntu_yaru"
-        elif "suse" in d_id:
-            init_preset_id = "emerald_matrix"
-        else:
-            init_preset_id = "kali_dragon"
-
-        self.init_preset_id = init_preset_id
-        preset = PRESETS.get(init_preset_id, PRESETS["kali_dragon"])
+        # 2. Fetch and Load Current Active Boot Theme Directly from System Files
+        self.current_system_theme = self.theme_scanner.detect_active_system_theme(
+            default_grub_path=self.telemetry.paths.default_config,
+            distro_id=self.telemetry.distro.distro_id
+        )
 
         self.theme_state = ThemeState()
-        self.theme_state.colors = preset.colors
-        self.theme_state.title_text = preset.title_text
-        if preset.wallpaper_path and preset.wallpaper_path.is_file():
-            self.theme_state.wallpaper_path = preset.wallpaper_path
 
-        # Parse real entries
+        if self.current_system_theme:
+            self.init_preset_id = self.current_system_theme.id
+            self.theme_state.colors = self.current_system_theme.colors
+            self.theme_state.title_text = self.current_system_theme.title_text
+            if self.current_system_theme.wallpaper_path and self.current_system_theme.wallpaper_path.is_file():
+                self.theme_state.wallpaper_path = self.current_system_theme.wallpaper_path
+        else:
+            d_id = (self.telemetry.distro.distro_id or "").lower()
+            if "kali" in d_id:
+                init_preset_id = "kali_dragon"
+            elif "arch" in d_id:
+                init_preset_id = "arch_minimal"
+            elif "fedora" in d_id or "rhel" in d_id:
+                init_preset_id = "fedora_blue"
+            elif "debian" in d_id:
+                init_preset_id = "debian_crimson"
+            elif "ubuntu" in d_id:
+                init_preset_id = "ubuntu_yaru"
+            elif "suse" in d_id:
+                init_preset_id = "emerald_matrix"
+            else:
+                init_preset_id = "kali_dragon"
+
+            self.init_preset_id = init_preset_id
+            preset = PRESETS.get(init_preset_id, PRESETS["kali_dragon"])
+            self.theme_state.colors = preset.colors
+            self.theme_state.title_text = preset.title_text
+            if preset.wallpaper_path and preset.wallpaper_path.is_file():
+                self.theme_state.wallpaper_path = preset.wallpaper_path
+
+        # Parse authentic boot menu entries
         self.theme_state.entries = GrubMenuParser.parse_entries(
             self.telemetry.paths.active_grub_cfg,
             fallback_distro=self.telemetry.distro.name
@@ -159,6 +183,8 @@ class MainWindow(QMainWindow):
 
         # 4. Wire signals & initial state push
         self._wire_signals()
+        if self.current_system_theme and self.current_system_theme.directory:
+            self.canvas.load_slices_from_dir(self.current_system_theme.directory)
         self._sync_state_to_canvas()
         self._log_initial_diagnostics()
 
@@ -372,15 +398,31 @@ class MainWindow(QMainWindow):
         self.themes_container_layout = QVBoxLayout()
         self.themes_container_layout.setSpacing(8)
 
-        # Preset Cards Grid
+        # 1. Highlight active system theme if present
+        if self.current_system_theme:
+            active_card = PresetCard(
+                preset_id="current_system_active",
+                name=f"⭐ {self.current_system_theme.name}",
+                description=f"Active System Theme: {self.current_system_theme.directory.name}",
+                primary_color=self.current_system_theme.colors.desktop_background,
+                accent_color=self.current_system_theme.colors.highlight_border,
+                is_active=True,
+                wallpaper_path=self.current_system_theme.wallpaper_path
+            )
+            active_card.selected.connect(lambda pid, d=self.current_system_theme: self._on_discovered_theme_selected(d))
+            self._preset_cards.append(active_card)
+            self.themes_container_layout.addWidget(active_card)
+
+        # 2. Preset Cards Grid
         for p_id, p_obj in PRESETS.items():
+            is_active = (not self.current_system_theme and p_id == self.init_preset_id)
             card = PresetCard(
                 preset_id=p_id,
                 name=p_obj.name,
                 description=p_obj.description,
                 primary_color=p_obj.colors.desktop_background,
                 accent_color=p_obj.colors.highlight_border,
-                is_active=(p_id == self.init_preset_id),
+                is_active=is_active,
                 wallpaper_path=p_obj.wallpaper_path
             )
             card.selected.connect(self._on_preset_selected)
