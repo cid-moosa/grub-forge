@@ -48,6 +48,12 @@ fi
 chmod +x "${APP_DIR}/bin/grub-forge"
 chmod +x "${APP_DIR}/backend/worker.py"
 
+# Ensure built-in theme artwork and distro icons are generated
+if [ ! -f "${APP_DIR}/data/themes/kali/background.png" ] || [ ! -f "${APP_DIR}/data/icons/distros/kali.png" ]; then
+    echo -e "${CYAN}[*] Generating authentic distro theme wallpapers and menu icons...${NC}"
+    python3 "${APP_DIR}/data/build_preset_assets.py" || true
+fi
+
 # 3. System vs User Installation Paths
 if [ "$(id -u)" -eq 0 ]; then
     echo -e "${CYAN}[*] Performing System-Wide Root Installation...${NC}"

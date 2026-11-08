@@ -78,7 +78,7 @@ class GrubMenuParser:
             entries = [
                 f"{d_name} (linux 6.12.1-default)",
                 f"Advanced options for {d_name}",
-                "Windows Boot Manager (on /dev/nvme0n1p1)",
+                f"{d_name} (recovery mode)",
                 "UEFI Firmware Settings"
             ]
 
