@@ -39,13 +39,37 @@ class ThemePreset:
     menu_left_pct: int = 20
     menu_width_pct: int = 60
     menu_height_pct: int = 50
+    wallpaper_path: Optional[Path] = None
+    title_text: str = "GRUB Boot Menu"
 
+
+_BASE_ASSETS = Path(__file__).resolve().parent.parent / "data" / "themes"
 
 PRESETS: Dict[str, ThemePreset] = {
+    "kali_dragon": ThemePreset(
+        id="kali_dragon",
+        name="Kali Linux (Dragon)",
+        description="Official Kali Linux cyber-dragon theme with neon cyan glow, dark space-blue canvas, and security aesthetics.",
+        title_text="Kali GNU/Linux (Rolling)",
+        wallpaper_path=_BASE_ASSETS / "kali" / "background.png",
+        colors=ThemeColors(
+            desktop_background="#080c16",
+            title_color="#00f5d4",
+            item_color="#cdd6f4",
+            selected_item_color="#ffffff",
+            highlight_background="#0077b6",
+            highlight_border="#00f5d4",
+            timeout_color="#00f5d4",
+            menu_box_background="rgba(8, 12, 22, 0.88)",
+            menu_box_border="#00b4d8"
+        )
+    ),
     "cyber_glow": ThemePreset(
         id="cyber_glow",
-        name="Cyber Glow (Default)",
+        name="Cyber Glow (Catppuccin)",
         description="Dark charcoal with soft electric blue accents and glowing highlight borders.",
+        title_text="GRUB Boot Menu",
+        wallpaper_path=_BASE_ASSETS / "cyber_glow" / "background.png",
         colors=ThemeColors(
             desktop_background="#1e1e2e",
             title_color="#cdd6f4",
@@ -62,6 +86,8 @@ PRESETS: Dict[str, ThemePreset] = {
         id="arch_minimal",
         name="Arch Minimal",
         description="Deep obsidian black with crisp Arch cyan highlights and sharp geometry.",
+        title_text="Arch Linux Boot Menu",
+        wallpaper_path=_BASE_ASSETS / "arch" / "background.png",
         colors=ThemeColors(
             desktop_background="#11111b",
             title_color="#89dceb",
@@ -76,8 +102,10 @@ PRESETS: Dict[str, ThemePreset] = {
     ),
     "fedora_blue": ThemePreset(
         id="fedora_blue",
-        name="Fedora Sleek",
-        description="Slate-navy foundation with classic Fedora blue accents and polished styling.",
+        name="Fedora Horizon",
+        description="Slate-navy foundation with classic Fedora blue accents and polished sapphire styling.",
+        title_text="Fedora Linux",
+        wallpaper_path=_BASE_ASSETS / "fedora" / "background.png",
         colors=ThemeColors(
             desktop_background="#182030",
             title_color="#ffffff",
@@ -93,7 +121,9 @@ PRESETS: Dict[str, ThemePreset] = {
     "debian_crimson": ThemePreset(
         id="debian_crimson",
         name="Debian Crimson",
-        description="Dark ruby aesthetic with Debian crimson highlights and high contrast.",
+        description="Dark cosmic ruby aesthetic with Debian crimson highlights and spiral nebula.",
+        title_text="Debian GNU/Linux",
+        wallpaper_path=_BASE_ASSETS / "debian" / "background.png",
         colors=ThemeColors(
             desktop_background="#1b1216",
             title_color="#f2f2f2",
@@ -106,10 +136,30 @@ PRESETS: Dict[str, ThemePreset] = {
             menu_box_border="#4a2230"
         )
     ),
+    "ubuntu_yaru": ThemePreset(
+        id="ubuntu_yaru",
+        name="Ubuntu Yaru",
+        description="Deep royal aubergine gradient with classic Ubuntu orange circular emblem.",
+        title_text="Ubuntu 24.04 LTS",
+        wallpaper_path=_BASE_ASSETS / "ubuntu" / "background.png",
+        colors=ThemeColors(
+            desktop_background="#260e1e",
+            title_color="#ffffff",
+            item_color="#e5e5e5",
+            selected_item_color="#ffffff",
+            highlight_background="#e95420",
+            highlight_border="#ff7b47",
+            timeout_color="#e95420",
+            menu_box_background="rgba(30, 12, 24, 0.90)",
+            menu_box_border="#5c1d3d"
+        )
+    ),
     "emerald_matrix": ThemePreset(
         id="emerald_matrix",
-        name="Emerald Matrix",
-        description="Dark carbon texture with neon green phosphor glow and terminal vibes.",
+        name="openSUSE / Emerald",
+        description="Dark carbon texture with neon green phosphor glow and terminal chameleon vibes.",
+        title_text="openSUSE Tumbleweed",
+        wallpaper_path=_BASE_ASSETS / "cyber_glow" / "background.png",
         colors=ThemeColors(
             desktop_background="#0d1410",
             title_color="#a6e3a1",

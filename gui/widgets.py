@@ -298,7 +298,7 @@ class CollapsibleSection(QFrame):
 
 class PresetCard(QFrame):
     """
-    Selectable theme preset tile with color swatches and metadata.
+    Selectable theme preset tile with thumbnail artwork, color badges, and metadata.
     """
     selected = pyqtSignal(str)
 
@@ -310,6 +310,7 @@ class PresetCard(QFrame):
         primary_color: str,
         accent_color: str,
         is_active: bool = False,
+        wallpaper_path: Optional[Path] = None,
         parent: Optional[QWidget] = None
     ):
         super().__init__(parent)
@@ -317,53 +318,94 @@ class PresetCard(QFrame):
         self._is_active = is_active
         self.primary_color = primary_color
         self.accent_color = accent_color
+        self.wallpaper_path = wallpaper_path
+        self.setObjectName("presetCardFrame")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumHeight(54)
+        self.setMinimumHeight(64)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(10)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(12)
 
-        # Mini color swatch pair
-        self.swatch = QLabel()
-        self.swatch.setFixedSize(28, 28)
-        self.swatch.setStyleSheet(f"""
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {primary_color}, stop:1 {accent_color});
+        # Thumbnail or color preview
+        self.thumb_lbl = QLabel()
+        self.thumb_lbl.setFixedSize(54, 38)
+        self.thumb_lbl.setStyleSheet(f"""
+            background-color: {primary_color};
             border: 1px solid #45475a;
-            border-radius: 4px;
+            border-radius: 5px;
         """)
-        layout.addWidget(self.swatch)
+        self._load_thumbnail()
+        layout.addWidget(self.thumb_lbl)
 
         # Labels
         text_layout = QVBoxLayout()
         text_layout.setSpacing(2)
         self.title_lbl = QLabel(name)
-        self.title_lbl.setStyleSheet("color: #cdd6f4; font-weight: 600; font-size: 12px;")
+        self.title_lbl.setStyleSheet("color: #cdd6f4; font-weight: 700; font-size: 13px; background: transparent;")
         text_layout.addWidget(self.title_lbl)
 
         self.desc_lbl = QLabel(description)
-        self.desc_lbl.setStyleSheet("color: #a6adc8; font-size: 10px;")
+        self.desc_lbl.setStyleSheet("color: #a6adc8; font-size: 11px; background: transparent;")
+        self.desc_lbl.setWordWrap(True)
         text_layout.addWidget(self.desc_lbl)
         layout.addLayout(text_layout, stretch=1)
 
+        # Active indicator badge
+        self.badge_lbl = QLabel("ACTIVE" if is_active else "")
+        self.badge_lbl.setStyleSheet("""
+            color: #89b4fa;
+            font-size: 10px;
+            font-weight: 800;
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(137, 180, 250, 0.12);
+            border: 1px solid #89b4fa;
+            border-radius: 4px;
+            padding: 3px 6px;
+        """)
+        self.badge_lbl.setVisible(is_active)
+        layout.addWidget(self.badge_lbl)
+
         self._update_style()
+
+    def _load_thumbnail(self):
+        if self.wallpaper_path and self.wallpaper_path.is_file():
+            try:
+                pix = QPixmap(str(self.wallpaper_path))
+                if not pix.isNull():
+                    scaled = pix.scaled(54, 38, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+                    # Crop to exact 54x38
+                    ox = max(0, (scaled.width() - 54) // 2)
+                    oy = max(0, (scaled.height() - 38) // 2)
+                    cropped = scaled.copy(ox, oy, 54, 38)
+                    self.thumb_lbl.setPixmap(cropped)
+                    return
+            except Exception:
+                pass
+        self.thumb_lbl.setStyleSheet(f"""
+            background-color: {self.primary_color};
+            border: 2px solid {self.accent_color};
+            border-radius: 5px;
+        """)
 
     def set_active(self, active: bool):
         self._is_active = active
+        self.badge_lbl.setText("ACTIVE" if active else "")
+        self.badge_lbl.setVisible(active)
         self._update_style()
 
     def _update_style(self):
         border_col = "#89b4fa" if self._is_active else "#313244"
-        bg_col = "#232338" if self._is_active else "#181825"
+        bg_col = "#1e1e2e" if self._is_active else "#181825"
         self.setStyleSheet(f"""
-            QFrame {{
+            QFrame#presetCardFrame {{
                 background-color: {bg_col};
                 border: 1px solid {border_col};
-                border-radius: 6px;
+                border-radius: 8px;
             }}
-            QFrame:hover {{
+            QFrame#presetCardFrame:hover {{
                 border-color: #89b4fa;
-                background-color: #1e1e2e;
+                background-color: #232338;
             }}
         """)
 

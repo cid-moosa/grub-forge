@@ -1,7 +1,7 @@
 """
-GRUB Forge - Production-Grade QSS Design System
-Catppuccin Mocha & Slate Dark Mode aesthetic tailored for professional workstation UIs
-(Blender / DaVinci Resolve inspired dark theme).
+GRUB Forge - Modern Workstation Design System (Catppuccin Mocha Dark)
+Engineered for clean rendering across all DPI settings, eliminating glitchy textures,
+dithering artifacts, and layout jumping.
 """
 
 from __future__ import annotations
@@ -126,7 +126,7 @@ QToolTip {
 }
 
 /* ==============================================================================
-   4. BUTTONS & INTERACTIVE CONTROLS
+   4. BUTTONS & INTERACTIVE CONTROLS (CRISP & GLITCH-FREE)
    ============================================================================== */
 QPushButton {
     background-color: #1e1e2e;
@@ -135,18 +135,19 @@ QPushButton {
     border-radius: 6px;
     padding: 6px 14px;
     font-weight: 500;
-    min-height: 20px;
+    min-height: 22px;
+    outline: none;
 }
 
 QPushButton:hover {
-    background-color: #313244;
+    background-color: #28293d;
     border-color: #45475a;
     color: #ffffff;
 }
 
 QPushButton:pressed {
-    background-color: #45475a;
-    border-color: #585b70;
+    background-color: #313244;
+    border-color: #89b4fa;
 }
 
 QPushButton:disabled {
@@ -155,38 +156,43 @@ QPushButton:disabled {
     border-color: #232338;
 }
 
-/* Primary Action Button (Workstation Accent) */
+/* Primary Action Button (Solid Vibrant Accent, Crisp on all DPIs) */
 QPushButton#primaryActionBtn {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #89b4fa, stop:1 #74c7ec);
+    background-color: #89b4fa;
     color: #11111b;
-    border: 1px solid #89b4fa;
+    border: 1px solid #74c7ec;
     border-radius: 6px;
     font-weight: 700;
     font-size: 13px;
-    padding: 8px 20px;
+    padding: 8px 18px;
     letter-spacing: 0.3px;
+    outline: none;
 }
 
 QPushButton#primaryActionBtn:hover {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #b4befe, stop:1 #89b4fa);
-    border-color: #b4befe;
+    background-color: #b4befe;
+    border-color: #cdd6f4;
+    color: #11111b;
 }
 
 QPushButton#primaryActionBtn:pressed {
     background-color: #74c7ec;
+    border-color: #89b4fa;
 }
 
 QPushButton#primaryActionBtn:disabled {
-    background: #313244;
+    background-color: #313244;
     color: #6c7086;
     border-color: #313244;
 }
 
-/* Secondary & Danger Buttons */
+/* Secondary Button */
 QPushButton#secondaryBtn {
     background-color: #181825;
     color: #cdd6f4;
     border: 1px solid #313244;
+    border-radius: 6px;
+    outline: none;
 }
 
 QPushButton#secondaryBtn:hover {
@@ -195,16 +201,53 @@ QPushButton#secondaryBtn:hover {
     color: #89b4fa;
 }
 
+QPushButton#secondaryBtn:pressed {
+    background-color: #313244;
+    border-color: #89b4fa;
+}
+
+/* Danger Button */
 QPushButton#dangerBtn {
     background-color: #181825;
     color: #f38ba8;
     border: 1px solid #45323a;
+    border-radius: 6px;
+    outline: none;
 }
 
 QPushButton#dangerBtn:hover {
     background-color: #3e2029;
     border-color: #f38ba8;
     color: #ffffff;
+}
+
+QPushButton#dangerBtn:pressed {
+    background-color: #4a2430;
+    border-color: #f38ba8;
+}
+
+/* Studio Workspace Navigation Tabs */
+QPushButton#studioTabBtn {
+    background-color: #181825;
+    color: #a6adc8;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0px;
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 12px;
+    outline: none;
+}
+
+QPushButton#studioTabBtn:hover {
+    color: #cdd6f4;
+    background-color: #1e1e2e;
+}
+
+QPushButton#studioTabBtn:checked, QPushButton#studioTabBtn[checked="true"] {
+    color: #89b4fa;
+    background-color: #1e1e2e;
+    border-bottom: 2px solid #89b4fa;
 }
 
 /* Subtle Icon Buttons */
@@ -214,6 +257,7 @@ QPushButton#iconBtn {
     border-radius: 4px;
     padding: 4px;
     color: #a6adc8;
+    outline: none;
 }
 
 QPushButton#iconBtn:hover {
@@ -239,20 +283,16 @@ QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
     background-color: #1e1e2e;
 }
 
-/* ComboBox Custom Arrow */
+/* ComboBox */
 QComboBox::drop-down {
     border: none;
     width: 24px;
+    background: transparent;
 }
 
 QComboBox::down-arrow {
     image: none;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid #89b4fa;
-    width: 0px;
-    height: 0px;
-    margin-right: 8px;
+    color: #89b4fa;
 }
 
 QComboBox QAbstractItemView {
@@ -271,7 +311,7 @@ QSpinBox::up-button, QSpinBox::down-button,
 QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
     background: #1e1e2e;
     border: none;
-    width: 16px;
+    width: 18px;
 }
 
 QSpinBox::up-button:hover, QSpinBox::down-button:hover,
@@ -306,7 +346,29 @@ QSlider::handle:horizontal {
 QSlider::handle:horizontal:hover {
     background: #ffffff;
     border-color: #b4befe;
-    box-shadow: 0 0 6px #89b4fa;
+}
+
+/* Checkbox */
+QCheckBox {
+    spacing: 8px;
+    color: #cdd6f4;
+}
+
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    background-color: #181825;
+}
+
+QCheckBox::indicator:hover {
+    border-color: #89b4fa;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #89b4fa;
+    border-color: #89b4fa;
 }
 
 /* ==============================================================================
@@ -329,6 +391,7 @@ QPushButton#accordionToggle {
     font-weight: 600;
     font-size: 12px;
     letter-spacing: 0.3px;
+    outline: none;
 }
 
 QPushButton#accordionToggle:hover {

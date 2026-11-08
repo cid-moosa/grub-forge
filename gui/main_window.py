@@ -1,7 +1,7 @@
 """
 GRUB Forge - Main Window Workstation Architecture
 Modern Blender/DaVinci Resolve-inspired interface coupling top telemetry,
-scrollable accordion inspector, central interactive WYSIWYG canvas, and
+segmented studio workspace tabs, central interactive WYSIWYG canvas, and
 an animated terminal execution drawer.
 """
 
@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QSplitter,
     QFrame, QLabel, QPushButton, QComboBox, QSlider, QSpinBox,
     QDoubleSpinBox, QScrollArea, QFileDialog, QMessageBox, QDialog,
-    QTextEdit, QCheckBox, QSizePolicy
+    QTextEdit, QCheckBox, QSizePolicy, QStackedWidget, QButtonGroup
 )
 
 from backend.fs_detector import FSDetector, SystemTelemetry
@@ -29,6 +29,8 @@ from backend.theme_scanner import ThemeScanner, DiscoveredTheme
 from backend.staging import StagingManager
 from backend.executor import CommandExecutor
 from backend.qemu_runner import QemuRunner
+from backend.theme_packager import ThemePackager
+from backend.font_manager import FontManager, GrubFont
 from gui.styles import MAIN_STYLESHEET
 from gui.widgets import (
     TelemetryBadge, ColorPickerButton, DragDropZone, CollapsibleSection, PresetCard
@@ -68,47 +70,46 @@ class EmergencyDialog(QDialog):
         self.code_view = QTextEdit()
         self.code_view.setReadOnly(True)
         self.code_view.setFont(QFont("JetBrains Mono", 10))
-        self.code_view.setPlainText(script_content)
-        self.code_view.setStyleSheet("background-color: #0c0c14; border: 1px solid #313244; color: #a6adc8;")
+        self.code_view.setText(script_content)
+        self.code_view.setStyleSheet("""
+            background-color: #0c0c14;
+            color: #a6adc8;
+            border: 1px solid #313244;
+            border-radius: 6px;
+            padding: 8px;
+        """)
         layout.addWidget(self.code_view)
 
-        btn_layout = QHBoxLayout()
-        export_btn = QPushButton("Export Script to USB / File...")
-        export_btn.clicked.connect(self._export_script)
-        btn_layout.addWidget(export_btn)
+        btn_row = QHBoxLayout()
+        btn_copy = QPushButton("📋 Copy Script to Clipboard")
+        btn_copy.setObjectName("secondaryBtn")
+        btn_copy.clicked.connect(self._copy_to_clipboard)
+        btn_row.addWidget(btn_copy)
 
-        btn_layout.addStretch()
+        btn_close = QPushButton("Close")
+        btn_close.clicked.connect(self.accept)
+        btn_row.addWidget(btn_close)
+        layout.addLayout(btn_row)
 
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.accept)
-        btn_layout.addWidget(close_btn)
-
-        layout.addLayout(btn_layout)
-        self.script_content = script_content
-
-    def _export_script(self):
-        dest, _ = QFileDialog.getSaveFileName(
-            self, "Save Emergency Recovery Script", "grub_emergency_restore.sh", "Shell Scripts (*.sh)"
-        )
-        if dest:
-            try:
-                Path(dest).write_text(self.script_content, encoding="utf-8")
-                QMessageBox.information(self, "Exported", f"Emergency script successfully exported to:\n{dest}")
-            except Exception as e:
-                QMessageBox.critical(self, "Export Error", f"Failed to save script: {e}")
+    def _copy_to_clipboard(self):
+        from PyQt6.QtGui import QGuiApplication
+        clipboard = QGuiApplication.clipboard()
+        if clipboard:
+            clipboard.setText(self.code_view.toPlainText())
+            QMessageBox.information(self, "Copied", "Rescue script copied to clipboard.")
 
 
 class MainWindow(QMainWindow):
     """
-    Main workstation window integrating telemetry, the accordion inspector,
-    interactive WYSIWYG canvas, and streaming execution drawer.
+    Main workstation window integrating top telemetry, segmented studio workspace tabs,
+    an interactive WYSIWYG canvas, and an animated streaming execution drawer.
     """
 
     def __init__(self, root_prefix: str = ""):
         super().__init__()
         self.setWindowTitle("GRUB Forge — Professional Bootloader Customizer")
-        self.resize(1360, 880)
-        self.setMinimumSize(1100, 720)
+        self.resize(1400, 900)
+        self.setMinimumSize(1120, 720)
         self.setStyleSheet(MAIN_STYLESHEET)
 
         # 1. System Discovery & Backend Initialization
@@ -116,12 +117,35 @@ class MainWindow(QMainWindow):
         self.telemetry = self.fs_detector.inspect()
         self.safety = SafetyManager(self.telemetry.paths, self.telemetry.tools, self.telemetry.distro)
         self.theme_engine = ThemeEngine(self.telemetry.paths.theme_dir)
+        self.font_manager = FontManager(root_prefix=root_prefix)
         self.executor = CommandExecutor(self)
         self.qemu_runner = QemuRunner()
 
-        # 2. Central State Model
+        # 2. Central State Model - Auto-select Distro Preset or Kali Linux by default
+        d_id = (self.telemetry.distro.distro_id or "").lower()
+        if "kali" in d_id:
+            init_preset_id = "kali_dragon"
+        elif "arch" in d_id:
+            init_preset_id = "arch_minimal"
+        elif "fedora" in d_id or "rhel" in d_id:
+            init_preset_id = "fedora_blue"
+        elif "debian" in d_id:
+            init_preset_id = "debian_crimson"
+        elif "ubuntu" in d_id:
+            init_preset_id = "ubuntu_yaru"
+        elif "suse" in d_id:
+            init_preset_id = "emerald_matrix"
+        else:
+            init_preset_id = "kali_dragon"
+
+        self.init_preset_id = init_preset_id
+        preset = PRESETS.get(init_preset_id, PRESETS["kali_dragon"])
+
         self.theme_state = ThemeState()
-        self.theme_state.colors = PRESETS["cyber_glow"].colors
+        self.theme_state.colors = preset.colors
+        self.theme_state.title_text = preset.title_text
+        if preset.wallpaper_path and preset.wallpaper_path.is_file():
+            self.theme_state.wallpaper_path = preset.wallpaper_path
 
         # Parse real entries
         self.theme_state.entries = GrubMenuParser.parse_entries(
@@ -163,7 +187,7 @@ class MainWindow(QMainWindow):
 
         root_layout.addWidget(self.workspace_splitter, stretch=1)
 
-        # C. Bottom Action & Execution Drawer (48px collapsed, 220px expanded)
+        # C. Bottom Action & Execution Drawer (50px collapsed, 220px expanded)
         self.drawer = TerminalDrawer(self)
         root_layout.addWidget(self.drawer)
 
@@ -191,7 +215,7 @@ class MainWindow(QMainWindow):
         title_lbl.setStyleSheet("font-size: 15px; font-weight: 800; color: #cdd6f4; letter-spacing: 0.8px;")
         brand_layout.addWidget(title_lbl)
 
-        ver_badge = QLabel("v1.0.0")
+        ver_badge = QLabel("STUDIO v1.0")
         ver_badge.setStyleSheet(
             "background-color: #1e1e2e; color: #89b4fa; border: 1px solid #313244; "
             "border-radius: 10px; padding: 2px 8px; font-size: 10px; font-weight: 700;"
@@ -202,7 +226,6 @@ class MainWindow(QMainWindow):
         layout.addSpacing(16)
 
         # Center: Telemetry Chips
-        # 1. Distro Chip
         distro_dot = "#a6e3a1" if not self.telemetry.distro.is_mock else "#f9e2af"
         distro_name = self.telemetry.distro.name + (" (Simulated)" if self.telemetry.distro.is_mock else "")
         self.chip_distro = TelemetryBadge(
@@ -211,7 +234,6 @@ class MainWindow(QMainWindow):
         )
         layout.addWidget(self.chip_distro)
 
-        # 2. Boot Environment Chip
         boot_env = "UEFI (x86_64)" if self.telemetry.fs.efi_mounted else "BIOS / MBR"
         boot_dot = "#a6e3a1" if self.telemetry.fs.efi_mounted else "#fab387"
         self.chip_boot = TelemetryBadge(
@@ -220,7 +242,6 @@ class MainWindow(QMainWindow):
         )
         layout.addWidget(self.chip_boot)
 
-        # 3. Filesystem Chip
         fs_str = self.telemetry.fs.fstype.upper()
         if self.telemetry.fs.is_separate_boot:
             fs_str += " [Sep /boot]"
@@ -250,41 +271,106 @@ class MainWindow(QMainWindow):
         return bar
 
     # =========================================================================
-    # B. LEFT INSPECTOR PANEL (380px)
+    # B. LEFT INSPECTOR PANEL (420px SEGMENTED STUDIO WORKSPACE)
     # =========================================================================
     def _build_inspector_panel(self) -> QWidget:
         container = QFrame()
         container.setObjectName("inspectorPanel")
-        container.setFixedWidth(380)
+        container.setFixedWidth(420)
 
         panel_layout = QVBoxLayout(container)
         panel_layout.setContentsMargins(0, 0, 0, 0)
         panel_layout.setSpacing(0)
 
-        # Inspector Title Header
+        # 1. Inspector Title Header
         header = QFrame()
         header.setStyleSheet("background-color: #181825; border-bottom: 1px solid #28293d; padding: 12px 16px;")
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(0, 0, 0, 0)
-        insp_title = QLabel("INSPECTOR & SETTINGS")
-        insp_title.setStyleSheet("color: #89b4fa; font-weight: 700; font-size: 11px; letter-spacing: 0.8px;")
+        insp_title = QLabel("STUDIO WORKSPACE")
+        insp_title.setStyleSheet("color: #89b4fa; font-weight: 800; font-size: 11px; letter-spacing: 0.8px;")
         h_layout.addWidget(insp_title)
+        h_layout.addStretch()
+
+        mode_badge = QLabel("LIVE SYNC")
+        mode_badge.setStyleSheet(
+            "background-color: rgba(166, 227, 161, 0.12); color: #a6e3a1; border: 1px solid #a6e3a1; "
+            "border-radius: 4px; padding: 2px 6px; font-size: 9px; font-weight: 800;"
+        )
+        h_layout.addWidget(mode_badge)
         panel_layout.addWidget(header)
 
-        # Scrollable content area
+        # 2. Segmented Studio Navigation Tab Bar
+        tab_bar = QFrame()
+        tab_bar.setStyleSheet("background-color: #181825; border-bottom: 1px solid #313244;")
+        tab_layout = QHBoxLayout(tab_bar)
+        tab_layout.setContentsMargins(6, 4, 6, 0)
+        tab_layout.setSpacing(2)
+
+        self.tab_group = QButtonGroup(self)
+        self.tab_group.setExclusive(True)
+
+        tabs_info = [
+            ("🎨 Presets", 0),
+            ("🖼 Artwork", 1),
+            ("📐 Layout", 2),
+            ("🔤 Styling", 3),
+            ("⚙️ Boot", 4)
+        ]
+
+        self.tab_buttons: List[QPushButton] = []
+        for label, idx in tabs_info:
+            btn = QPushButton(label)
+            btn.setObjectName("studioTabBtn")
+            btn.setCheckable(True)
+            if idx == 0:
+                btn.setChecked(True)
+            btn.clicked.connect(lambda _, i=idx: self.stacked_inspector.setCurrentIndex(i))
+            self.tab_group.addButton(btn, idx)
+            tab_layout.addWidget(btn)
+            self.tab_buttons.append(btn)
+
+        panel_layout.addWidget(tab_bar)
+
+        # 3. Stacked Studio Pages
+        self.stacked_inspector = QStackedWidget()
+
+        self.page_presets = self._build_page_presets()
+        self.stacked_inspector.addWidget(self.page_presets)
+
+        self.page_artwork = self._build_page_artwork()
+        self.stacked_inspector.addWidget(self.page_artwork)
+
+        self.page_layout = self._build_page_geometry()
+        self.stacked_inspector.addWidget(self.page_layout)
+
+        self.page_typography = self._build_page_typography()
+        self.stacked_inspector.addWidget(self.page_typography)
+
+        self.page_boot = self._build_page_boot()
+        self.stacked_inspector.addWidget(self.page_boot)
+
+        panel_layout.addWidget(self.stacked_inspector)
+        return container
+
+    def _build_page_presets(self) -> QWidget:
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setStyleSheet("background: transparent;")
 
-        scroll_content = QWidget()
-        layout = QVBoxLayout(scroll_content)
+        content = QWidget()
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(12)
+        layout.setSpacing(10)
 
-        # --- Accordion 1: Theme Discovery & Presets ---
-        sec_themes = CollapsibleSection("Theme Discovery & Presets", starts_expanded=True)
+        hdr = QLabel("DISTRO THEME PRESETS & GALLERY")
+        hdr.setStyleSheet("color: #a6adc8; font-weight: 700; font-size: 11px; letter-spacing: 0.5px;")
+        layout.addWidget(hdr)
+
         self._preset_cards.clear()
+        self.themes_container_layout = QVBoxLayout()
+        self.themes_container_layout.setSpacing(8)
 
         # Preset Cards Grid
         for p_id, p_obj in PRESETS.items():
@@ -294,13 +380,14 @@ class MainWindow(QMainWindow):
                 description=p_obj.description,
                 primary_color=p_obj.colors.desktop_background,
                 accent_color=p_obj.colors.highlight_border,
-                is_active=(p_id == "cyber_glow")
+                is_active=(p_id == self.init_preset_id),
+                wallpaper_path=p_obj.wallpaper_path
             )
             card.selected.connect(self._on_preset_selected)
             self._preset_cards.append(card)
-            sec_themes.add_widget(card)
+            self.themes_container_layout.addWidget(card)
 
-        # Scan and list installed system themes on disk
+        # Installed themes on disk
         theme_scanner = ThemeScanner(
             search_paths=[
                 self.telemetry.paths.theme_dir,
@@ -314,27 +401,98 @@ class MainWindow(QMainWindow):
                 description=f"Installed Theme ({disc.directory.name})",
                 primary_color=disc.colors.desktop_background,
                 accent_color=disc.colors.highlight_border,
-                is_active=False
+                is_active=False,
+                wallpaper_path=disc.wallpaper_path
             )
             card.selected.connect(lambda pid, d=disc: self._on_discovered_theme_selected(d))
             self._preset_cards.append(card)
-            sec_themes.add_widget(card)
+            self.themes_container_layout.addWidget(card)
 
-        # Create Custom Blank Theme Button
+        layout.addLayout(self.themes_container_layout)
+
+        layout.addSpacing(6)
         self.btn_new_theme = QPushButton("＋ Create Custom Theme Blueprint")
         self.btn_new_theme.setObjectName("secondaryBtn")
         self.btn_new_theme.clicked.connect(self._reset_to_custom_blueprint)
-        sec_themes.add_widget(self.btn_new_theme)
-        layout.addWidget(sec_themes)
+        layout.addWidget(self.btn_new_theme)
 
-        # --- Accordion 2: Background & Wallpaper Management ---
-        sec_bg = CollapsibleSection("Background & Wallpaper Management", starts_expanded=True)
+        pkg_row = QHBoxLayout()
+        self.btn_export_theme = QPushButton("📤 Export Archive (.tar.gz)")
+        self.btn_export_theme.setObjectName("secondaryBtn")
+        self.btn_export_theme.clicked.connect(self._export_theme_archive)
+
+        self.btn_import_theme = QPushButton("📥 Import Theme (.zip/.tar.gz)")
+        self.btn_import_theme.setObjectName("secondaryBtn")
+        self.btn_import_theme.clicked.connect(self._import_theme_archive)
+
+        pkg_row.addWidget(self.btn_export_theme)
+        pkg_row.addWidget(self.btn_import_theme)
+        layout.addLayout(pkg_row)
+
+        layout.addStretch()
+        scroll.setWidget(content)
+        return scroll
+
+    def _build_page_artwork(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("background: transparent;")
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+
+        hdr = QLabel("BACKGROUND ARTWORK & NORMALIZATION")
+        hdr.setStyleSheet("color: #a6adc8; font-weight: 700; font-size: 11px; letter-spacing: 0.5px;")
+        layout.addWidget(hdr)
 
         self.drop_zone = DragDropZone()
         self.drop_zone.fileDropped.connect(self._on_wallpaper_selected)
-        sec_bg.add_widget(self.drop_zone)
+        if self.theme_state.wallpaper_path:
+            self.drop_zone.set_file(self.theme_state.wallpaper_path)
+        layout.addWidget(self.drop_zone)
 
-        # Scale Mode
+        quick_lbl = QLabel("Quick Wallpaper Presets:")
+        quick_lbl.setStyleSheet("color: #a6adc8; font-size: 11px; font-weight: 600;")
+        layout.addWidget(quick_lbl)
+
+        q_grid1 = QHBoxLayout()
+        btn_q_kali = QPushButton("🐉 Kali Dragon")
+        btn_q_kali.setObjectName("secondaryBtn")
+        btn_q_kali.clicked.connect(lambda: self._apply_quick_wallpaper("kali/background.png"))
+        btn_q_arch = QPushButton("⚡ Arch Minimal")
+        btn_q_arch.setObjectName("secondaryBtn")
+        btn_q_arch.clicked.connect(lambda: self._apply_quick_wallpaper("arch/background.png"))
+        q_grid1.addWidget(btn_q_kali)
+        q_grid1.addWidget(btn_q_arch)
+        layout.addLayout(q_grid1)
+
+        q_grid2 = QHBoxLayout()
+        btn_q_deb = QPushButton("🌀 Debian Cosmos")
+        btn_q_deb.setObjectName("secondaryBtn")
+        btn_q_deb.clicked.connect(lambda: self._apply_quick_wallpaper("debian/background.png"))
+        btn_q_fed = QPushButton("💎 Fedora Horizon")
+        btn_q_fed.setObjectName("secondaryBtn")
+        btn_q_fed.clicked.connect(lambda: self._apply_quick_wallpaper("fedora/background.png"))
+        q_grid2.addWidget(btn_q_deb)
+        q_grid2.addWidget(btn_q_fed)
+        layout.addLayout(q_grid2)
+
+        q_grid3 = QHBoxLayout()
+        btn_q_ubu = QPushButton("🟠 Ubuntu Yaru")
+        btn_q_ubu.setObjectName("secondaryBtn")
+        btn_q_ubu.clicked.connect(lambda: self._apply_quick_wallpaper("ubuntu/background.png"))
+        btn_q_cyb = QPushButton("💠 Catppuccin")
+        btn_q_cyb.setObjectName("secondaryBtn")
+        btn_q_cyb.clicked.connect(lambda: self._apply_quick_wallpaper("cyber_glow/background.png"))
+        q_grid3.addWidget(btn_q_ubu)
+        q_grid3.addWidget(btn_q_cyb)
+        layout.addLayout(q_grid3)
+
+        layout.addSpacing(6)
+
         scale_row = QHBoxLayout()
         scale_lbl = QLabel("Scaling Mode:")
         scale_lbl.setStyleSheet("color: #a6adc8; font-size: 11px;")
@@ -344,9 +502,8 @@ class MainWindow(QMainWindow):
         self.scale_combo.addItem("Stretch to Resolution", "stretch")
         scale_row.addWidget(scale_lbl)
         scale_row.addWidget(self.scale_combo)
-        sec_bg.add_layout(scale_row)
+        layout.addLayout(scale_row)
 
-        # Dimming Overlay Slider
         dim_row = QHBoxLayout()
         dim_lbl = QLabel("Dim Background:")
         dim_lbl.setStyleSheet("color: #a6adc8; font-size: 11px;")
@@ -358,9 +515,8 @@ class MainWindow(QMainWindow):
         dim_row.addWidget(dim_lbl)
         dim_row.addWidget(self.dim_slider)
         dim_row.addWidget(self.dim_val_lbl)
-        sec_bg.add_layout(dim_row)
+        layout.addLayout(dim_row)
 
-        # Blur Level Slider
         blur_row = QHBoxLayout()
         blur_lbl = QLabel("Fast Blur:")
         blur_lbl.setStyleSheet("color: #a6adc8; font-size: 11px;")
@@ -372,9 +528,8 @@ class MainWindow(QMainWindow):
         blur_row.addWidget(blur_lbl)
         blur_row.addWidget(self.blur_slider)
         blur_row.addWidget(self.blur_val_lbl)
-        sec_bg.add_layout(blur_row)
+        layout.addLayout(blur_row)
 
-        # Solid Fallback Color
         solid_row = QHBoxLayout()
         solid_lbl = QLabel("Solid Desktop Color:")
         solid_lbl.setStyleSheet("color: #a6adc8; font-size: 11px;")
@@ -382,17 +537,63 @@ class MainWindow(QMainWindow):
         solid_row.addWidget(solid_lbl)
         solid_row.addStretch()
         solid_row.addWidget(self.solid_color_picker)
-        sec_bg.add_layout(solid_row)
+        layout.addLayout(solid_row)
 
-        layout.addWidget(sec_bg)
+        self.btn_clear_bg = QPushButton("✕ Clear Wallpaper (Use Solid Color)")
+        self.btn_clear_bg.setObjectName("secondaryBtn")
+        self.btn_clear_bg.clicked.connect(self._clear_wallpaper)
+        layout.addWidget(self.btn_clear_bg)
 
-        # --- Accordion 3: Menu Geometry & Alignment ---
-        sec_geo = CollapsibleSection("Menu Geometry & Alignment", starts_expanded=True)
+        layout.addStretch()
+        scroll.setWidget(content)
+        return scroll
 
-        # Free Drag Mode Checkbox
+    def _build_page_geometry(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("background: transparent;")
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+
+        hdr = QLabel("CONTAINER GEOMETRY & ALIGNMENT")
+        hdr.setStyleSheet("color: #a6adc8; font-weight: 700; font-size: 11px; letter-spacing: 0.5px;")
+        layout.addWidget(hdr)
+
         self.chk_free_drag = QCheckBox("Enable Interactive Viewport Drag")
         self.chk_free_drag.setStyleSheet("color: #89b4fa; font-weight: 600; font-size: 12px;")
-        sec_geo.add_widget(self.chk_free_drag)
+        layout.addWidget(self.chk_free_drag)
+
+        align_lbl = QLabel("Quick Layout Presets:")
+        align_lbl.setStyleSheet("color: #a6adc8; font-size: 11px; font-weight: 600;")
+        layout.addWidget(align_lbl)
+
+        a_row1 = QHBoxLayout()
+        btn_cen = QPushButton("Center (Default)")
+        btn_cen.setObjectName("secondaryBtn")
+        btn_cen.clicked.connect(lambda: self._apply_layout_preset(20.0, 25.0, 60.0, 48.0))
+        btn_tl = QPushButton("Top-Left Corner")
+        btn_tl.setObjectName("secondaryBtn")
+        btn_tl.clicked.connect(lambda: self._apply_layout_preset(6.0, 15.0, 50.0, 50.0))
+        a_row1.addWidget(btn_cen)
+        a_row1.addWidget(btn_tl)
+        layout.addLayout(a_row1)
+
+        a_row2 = QHBoxLayout()
+        btn_bot = QPushButton("Bottom Dock")
+        btn_bot.setObjectName("secondaryBtn")
+        btn_bot.clicked.connect(lambda: self._apply_layout_preset(15.0, 45.0, 70.0, 38.0))
+        btn_hero = QPushButton("Wide Hero")
+        btn_hero.setObjectName("secondaryBtn")
+        btn_hero.clicked.connect(lambda: self._apply_layout_preset(10.0, 20.0, 80.0, 55.0))
+        a_row2.addWidget(btn_bot)
+        a_row2.addWidget(btn_hero)
+        layout.addLayout(a_row2)
+
+        layout.addSpacing(6)
 
         def add_spin_row(title: str, val: float, min_v: float, max_v: float, step: float = 1.0):
             r = QHBoxLayout()
@@ -406,7 +607,7 @@ class MainWindow(QMainWindow):
             r.addWidget(lbl)
             r.addStretch()
             r.addWidget(spin)
-            sec_geo.add_layout(r)
+            layout.addLayout(r)
             return spin
 
         self.spin_left = add_spin_row("Left Offset (%):", self.theme_state.menu_left_pct, 0.0, 90.0)
@@ -414,7 +615,6 @@ class MainWindow(QMainWindow):
         self.spin_width = add_spin_row("Menu Width (%):", self.theme_state.menu_width_pct, 20.0, 95.0)
         self.spin_height = add_spin_row("Menu Height (%):", self.theme_state.menu_height_pct, 20.0, 80.0)
 
-        # Item padding & spacing
         pad_row = QHBoxLayout()
         pad_lbl = QLabel("Item Padding / Spacing:")
         pad_lbl.setStyleSheet("color: #a6adc8; font-size: 11px;")
@@ -428,12 +628,41 @@ class MainWindow(QMainWindow):
         pad_row.addStretch()
         pad_row.addWidget(self.spin_padding)
         pad_row.addWidget(self.spin_spacing)
-        sec_geo.add_layout(pad_row)
+        layout.addLayout(pad_row)
 
-        layout.addWidget(sec_geo)
+        layout.addStretch()
+        scroll.setWidget(content)
+        return scroll
 
-        # --- Accordion 4: Typography & Color Engine ---
-        sec_color = CollapsibleSection("Typography & Color Engine", starts_expanded=True)
+    def _build_page_typography(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("background: transparent;")
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+
+        hdr = QLabel("TYPOGRAPHY, COLOR PALETTE & HIGHLIGHTS")
+        hdr.setStyleSheet("color: #a6adc8; font-weight: 700; font-size: 11px; letter-spacing: 0.5px;")
+        layout.addWidget(hdr)
+
+        f_lbl = QLabel("GRUB Bitmap Font (.pf2):")
+        f_lbl.setStyleSheet("color: #a6adc8; font-size: 11px; font-weight: 600;")
+        layout.addWidget(f_lbl)
+
+        self.combo_font = QComboBox()
+        self._populate_fonts()
+        layout.addWidget(self.combo_font)
+
+        self.btn_convert_font = QPushButton("🔤 Convert TrueType/OpenType to .pf2")
+        self.btn_convert_font.setObjectName("secondaryBtn")
+        self.btn_convert_font.clicked.connect(self._convert_custom_font)
+        layout.addWidget(self.btn_convert_font)
+
+        layout.addSpacing(6)
 
         def add_color_row(title: str, initial_hex: str):
             r = QHBoxLayout()
@@ -443,7 +672,7 @@ class MainWindow(QMainWindow):
             r.addWidget(lbl)
             r.addStretch()
             r.addWidget(picker)
-            sec_color.add_layout(r)
+            layout.addLayout(r)
             return picker
 
         self.col_title = add_color_row("Title Header Color:", self.theme_state.colors.title_color)
@@ -452,7 +681,6 @@ class MainWindow(QMainWindow):
         self.col_hl_bg = add_color_row("Highlight Fill:", self.theme_state.colors.highlight_background)
         self.col_hl_border = add_color_row("Highlight Border Glow:", self.theme_state.colors.highlight_border)
 
-        # Highlight Box Style selector
         hl_style_row = QHBoxLayout()
         hl_lbl = QLabel("Highlight Box Style:")
         hl_lbl.setStyleSheet("color: #a6adc8; font-size: 11px;")
@@ -461,14 +689,27 @@ class MainWindow(QMainWindow):
         self.combo_hl_style.addItem("Flat Solid Pill", "flat")
         hl_style_row.addWidget(hl_lbl)
         hl_style_row.addWidget(self.combo_hl_style)
-        sec_color.add_layout(hl_style_row)
+        layout.addLayout(hl_style_row)
 
-        layout.addWidget(sec_color)
+        layout.addStretch()
+        scroll.setWidget(content)
+        return scroll
 
-        # --- Accordion 5: Boot Sequence Settings ---
-        sec_boot = CollapsibleSection("Boot Sequence Settings", starts_expanded=True)
+    def _build_page_boot(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("background: transparent;")
 
-        # Timeout Duration Slider & Numeric Badge
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+
+        hdr = QLabel("BOOT SEQUENCE, TIMEOUT & DUAL-BOOT")
+        hdr.setStyleSheet("color: #a6adc8; font-weight: 700; font-size: 11px; letter-spacing: 0.5px;")
+        layout.addWidget(hdr)
+
         t_row = QHBoxLayout()
         t_lbl = QLabel("Timeout Duration:")
         t_lbl.setStyleSheet("color: #a6adc8; font-size: 11px;")
@@ -483,43 +724,59 @@ class MainWindow(QMainWindow):
         t_row.addWidget(t_lbl)
         t_row.addWidget(self.slider_timeout)
         t_row.addWidget(self.badge_timeout)
-        sec_boot.add_layout(t_row)
+        layout.addLayout(t_row)
 
-        # Default OS dropdown
         os_lbl = QLabel("Default Boot OS Entry:")
         os_lbl.setStyleSheet("color: #a6adc8; font-size: 11px; margin-top: 4px;")
-        sec_boot.add_widget(os_lbl)
+        layout.addWidget(os_lbl)
 
         self.combo_default_os = QComboBox()
         for idx, entry in enumerate(self.theme_state.entries):
             self.combo_default_os.addItem(entry, idx)
-        sec_boot.add_widget(self.combo_default_os)
+        layout.addWidget(self.combo_default_os)
 
-        # Dual-Boot & os-prober Protection
+        layout.addSpacing(6)
+
         self.chk_os_prober = QCheckBox("Detect Dual-Boot OSes (os-prober)")
         self.chk_os_prober.setChecked(True)
-        self.chk_os_prober.setStyleSheet("color: #89b4fa; font-weight: 600; font-size: 12px; margin-top: 10px;")
-        sec_boot.add_widget(self.chk_os_prober)
+        self.chk_os_prober.setStyleSheet("color: #89b4fa; font-weight: 600; font-size: 12px; margin-top: 4px;")
+        layout.addWidget(self.chk_os_prober)
 
-        self.lbl_os_prober_sub = QLabel("Keep Windows and other Linux installations in the boot menu.")
+        self.lbl_os_prober_sub = QLabel("Keep Windows Boot Manager and secondary Linux distributions visible in the GRUB menu.")
         self.lbl_os_prober_sub.setStyleSheet("color: #a6adc8; font-size: 10px; margin-left: 20px;")
         self.lbl_os_prober_sub.setWordWrap(True)
-        sec_boot.add_widget(self.lbl_os_prober_sub)
+        layout.addWidget(self.lbl_os_prober_sub)
 
-        # Warning badge if os-prober binary missing on host
         has_os_prober = StagingManager.check_os_prober_installed()
         self.lbl_prober_warn = QLabel("⚠️ os-prober binary not found. Install it: sudo apt/pacman/dnf install os-prober")
         self.lbl_prober_warn.setStyleSheet("color: #f9e2af; font-size: 10px; margin-left: 20px; font-weight: bold;")
         self.lbl_prober_warn.setVisible(not has_os_prober)
-        sec_boot.add_widget(self.lbl_prober_warn)
+        layout.addWidget(self.lbl_prober_warn)
 
-        layout.addWidget(sec_boot)
+        layout.addSpacing(12)
+
+        safe_hdr = QLabel("SAFETY & EMERGENCY RESCUE")
+        safe_hdr.setStyleSheet("color: #a6adc8; font-weight: 700; font-size: 11px; letter-spacing: 0.5px;")
+        layout.addWidget(safe_hdr)
+
+        self.btn_hist = QPushButton("📋 Configuration Snapshot History & Diffs")
+        self.btn_hist.setObjectName("secondaryBtn")
+        self.btn_hist.clicked.connect(self._show_snapshot_history)
+        layout.addWidget(self.btn_hist)
+
+        self.btn_emg = QPushButton("🛡 Standalone Emergency Rescue Script")
+        self.btn_emg.setObjectName("dangerBtn")
+        self.btn_emg.clicked.connect(self._show_emergency_dialog)
+        layout.addWidget(self.btn_emg)
+
+        self.btn_roll = QPushButton("↺ Rollback to Previous Snapshot")
+        self.btn_roll.setObjectName("secondaryBtn")
+        self.btn_roll.clicked.connect(self._execute_rollback)
+        layout.addWidget(self.btn_roll)
 
         layout.addStretch()
-        scroll.setWidget(scroll_content)
-        panel_layout.addWidget(scroll)
-
-        return container
+        scroll.setWidget(content)
+        return scroll
 
     # =========================================================================
     # C. CENTRAL VIEWPORT CONTAINER
@@ -559,6 +816,19 @@ class MainWindow(QMainWindow):
         self.btn_reload_cfg.setObjectName("secondaryBtn")
         self.btn_reload_cfg.clicked.connect(self._reload_grub_cfg)
         t_layout.addWidget(self.btn_reload_cfg)
+
+        # Prominent Primary Action Buttons in Viewport
+        self.btn_qemu_top = QPushButton("🖥 Test in VM")
+        self.btn_qemu_top.setObjectName("secondaryBtn")
+        self.btn_qemu_top.setToolTip("Test active theme in virtual QEMU bootloader")
+        self.btn_qemu_top.clicked.connect(self._launch_qemu_test)
+        t_layout.addWidget(self.btn_qemu_top)
+
+        self.btn_apply_top = QPushButton("⚡ Apply & Rebuild")
+        self.btn_apply_top.setObjectName("primaryActionBtn")
+        self.btn_apply_top.setToolTip("Stage and deploy theme to host GRUB bootloader")
+        self.btn_apply_top.clicked.connect(self._execute_apply_and_rebuild)
+        t_layout.addWidget(self.btn_apply_top)
 
         layout.addWidget(v_toolbar)
 
@@ -623,7 +893,7 @@ class MainWindow(QMainWindow):
         self.canvas.apply_state(self.theme_state)
 
     def _log_initial_diagnostics(self):
-        self.drawer.append_log("[*] GRUB Forge Workstation v1.0.0 initialized.")
+        self.drawer.append_log("[*] GRUB Forge Studio v1.0.0 initialized.")
         self.drawer.append_log(f"[*] Target Distribution: {self.telemetry.distro.name} ({self.telemetry.distro.distro_id})")
         self.drawer.append_log(f"[*] /boot Filesystem Topology: {self.telemetry.fs.fstype.upper()} (Mount: {self.telemetry.fs.boot_target})")
         if self.telemetry.fs.is_btrfs:
@@ -634,7 +904,7 @@ class MainWindow(QMainWindow):
         self.drawer.append_log("[✓] Zero-brick guardrails armed: Automated snapshots, atomic updates & emergency rescue ready.")
 
     # =========================================================================
-    # EVENT HANDLERS
+    # EVENT HANDLERS & QUICK ACTIONS
     # =========================================================================
 
     def _on_resolution_changed(self, index: int):
@@ -664,6 +934,14 @@ class MainWindow(QMainWindow):
             menu_box_border=preset.colors.menu_box_border
         )
 
+        if hasattr(preset, "title_text") and preset.title_text:
+            self.theme_state.title_text = preset.title_text
+
+        if preset.wallpaper_path and preset.wallpaper_path.is_file():
+            self._on_wallpaper_selected(preset.wallpaper_path)
+        else:
+            self._clear_wallpaper()
+
         # Update controls
         self.solid_color_picker.set_color(self.theme_state.colors.desktop_background)
         self.col_title.set_color(self.theme_state.colors.title_color)
@@ -678,10 +956,15 @@ class MainWindow(QMainWindow):
     def _reset_to_custom_blueprint(self):
         for card in self._preset_cards:
             card.set_active(False)
-        self.theme_state.wallpaper_path = None
-        self.drop_zone.set_file(None)
+        self._clear_wallpaper()
         self.theme_state.colors = ThemeColors()
+        self.theme_state.title_text = "GRUB Boot Menu"
         self.solid_color_picker.set_color(self.theme_state.colors.desktop_background)
+        self.col_title.set_color(self.theme_state.colors.title_color)
+        self.col_item.set_color(self.theme_state.colors.item_color)
+        self.col_selected.set_color(self.theme_state.colors.selected_item_color)
+        self.col_hl_bg.set_color(self.theme_state.colors.highlight_background)
+        self.col_hl_border.set_color(self.theme_state.colors.highlight_border)
         self._sync_state_to_canvas()
         self.drawer.append_log("[*] Reset to blank custom blueprint.")
 
@@ -689,7 +972,28 @@ class MainWindow(QMainWindow):
         self.theme_state.wallpaper_path = path
         self.drop_zone.set_file(path)
         self._sync_state_to_canvas()
-        self.drawer.append_log(f"[+] Loaded wallpaper asset: {path.name}")
+        self.drawer.append_log(f"[+] Loaded wallpaper artwork: {path.name}")
+
+    def _apply_quick_wallpaper(self, rel_subpath: str):
+        p = Path(__file__).resolve().parent.parent / "data" / "themes" / rel_subpath
+        if p.is_file():
+            self._on_wallpaper_selected(p)
+        else:
+            self.drawer.append_log(f"[!] Wallpaper not found at: {p}")
+
+    def _clear_wallpaper(self):
+        self.theme_state.wallpaper_path = None
+        self.drop_zone.set_file(None)
+        self._sync_state_to_canvas()
+        self.drawer.append_log("[*] Wallpaper cleared. Solid background active.")
+
+    def _apply_layout_preset(self, left: float, top: float, width: float, height: float):
+        self.spin_left.setValue(left)
+        self.spin_top.setValue(top)
+        self.spin_width.setValue(width)
+        self.spin_height.setValue(height)
+        self._on_geometry_spin_changed()
+        self.drawer.append_log(f"[*] Applied layout preset: X={left}%, Y={top}%, W={width}%, H={height}%")
 
     def _on_scale_mode_changed(self, index: int):
         self.theme_state.scale_mode = self.scale_combo.currentData()
@@ -720,13 +1024,14 @@ class MainWindow(QMainWindow):
         self.theme_state.menu_top_pct = self.spin_top.value()
         self.theme_state.menu_width_pct = self.spin_width.value()
         self.theme_state.menu_height_pct = self.spin_height.value()
+        self.canvas.menu_item.state = self.theme_state
         self.canvas.menu_item.update_position()
         self.canvas._scene.update()
 
     def _on_padding_spacing_changed(self):
         self.theme_state.item_padding = self.spin_padding.value()
         self.theme_state.item_spacing = self.spin_spacing.value()
-        self.canvas._scene.update()
+        self._sync_state_to_canvas()
 
     def _on_canvas_geometry_synced(self, l_pct, t_pct, w_pct, h_pct):
         self.spin_left.blockSignals(True)
@@ -735,6 +1040,11 @@ class MainWindow(QMainWindow):
         self.spin_top.setValue(t_pct)
         self.spin_left.blockSignals(False)
         self.spin_top.blockSignals(False)
+
+    def _on_canvas_os_selected(self, index: int):
+        self.combo_default_os.blockSignals(True)
+        self.combo_default_os.setCurrentIndex(index)
+        self.combo_default_os.blockSignals(False)
 
     def _on_title_color_changed(self, hex_val: str):
         self.theme_state.colors.title_color = hex_val
@@ -754,7 +1064,6 @@ class MainWindow(QMainWindow):
 
     def _on_hl_border_changed(self, hex_val: str):
         self.theme_state.colors.highlight_border = hex_val
-        self.theme_state.colors.timeout_color = hex_val
         self._sync_state_to_canvas()
 
     def _on_hl_style_changed(self, index: int):
@@ -764,26 +1073,133 @@ class MainWindow(QMainWindow):
     def _on_timeout_slider_changed(self, val: int):
         self.theme_state.timeout_seconds = val
         self.badge_timeout.setText(f"{val}s")
-        self.canvas.reset_preview()
+        self._sync_state_to_canvas()
 
     def _on_default_os_combo_changed(self, index: int):
         self.theme_state.default_os_index = index
         self._sync_state_to_canvas()
 
-    def _on_canvas_os_selected(self, index: int):
-        self.combo_default_os.blockSignals(True)
-        self.combo_default_os.setCurrentIndex(index)
-        self.combo_default_os.blockSignals(False)
+    def _populate_fonts(self):
+        self.combo_font.clear()
+        fonts = self.font_manager.discover_pf2_fonts()
+        for f in fonts:
+            self.combo_font.addItem(f"{f.name} (GRUB .pf2)", str(f.path))
+
+    def _convert_custom_font(self):
+        ttf_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select TrueType or OpenType Font",
+            "",
+            "Font Files (*.ttf *.otf);;All Files (*)"
+        )
+        if not ttf_path:
+            return
+
+        src = Path(ttf_path)
+        dest_dir = Path.home() / ".cache" / "grub-forge" / "fonts"
+        dest_pf2 = dest_dir / f"{src.stem}_16.pf2"
+        ok, msg = self.font_manager.convert_ttf_to_pf2(src, dest_pf2, size_pt=16)
+        if ok:
+            self.drawer.append_log(f"[✓] {msg}")
+            self._populate_fonts()
+            idx = self.combo_font.findText(f"{src.stem}_16 (GRUB .pf2)")
+            if idx >= 0:
+                self.combo_font.setCurrentIndex(idx)
+            QMessageBox.information(self, "Font Converted", f"Successfully converted {src.name} to GRUB .pf2 format:\n{dest_pf2}")
+        else:
+            self.drawer.append_log(f"[!] Font conversion failed: {msg}")
+            QMessageBox.warning(
+                self,
+                "Font Conversion",
+                f"Could not convert font:\n{msg}\n\nEnsure grub-mkfont or grub2-mkfont is installed."
+            )
+
+    def _export_theme_archive(self):
+        dest_file, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Theme Package",
+            str(Path.home() / f"{self.theme_state.title_text.lower().replace(' ', '_')}.tar.gz"),
+            "Gzip Tar Archive (*.tar.gz);;Zip Archive (*.zip)"
+        )
+        if not dest_file:
+            return
+
+        staging_mgr = StagingManager()
+        staged_dir = staging_mgr.prepare_staged_payload(
+            telemetry=self.telemetry,
+            theme_name="grub_forge_theme",
+            colors=self.theme_state.colors,
+            wallpaper_source=self.theme_state.wallpaper_path,
+            resolution=self.theme_state.resolution,
+            title_text=self.theme_state.title_text,
+            timeout_seconds=self.theme_state.timeout_seconds,
+            default_os_index=self.theme_state.default_os_index,
+            enable_os_prober=self.chk_os_prober.isChecked(),
+            dry_run=True
+        )
+
+        try:
+            exported_path = ThemePackager.export_theme(
+                theme_dir=staged_dir / "theme",
+                output_archive=Path(dest_file),
+                author="GRUB Forge User"
+            )
+            self.drawer.append_log(f"[✓] Successfully exported theme package to: {exported_path}")
+            QMessageBox.information(self, "Export Complete", f"Theme package successfully exported to:\n{exported_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export theme package:\n{e}")
+
+    def _import_theme_archive(self):
+        archive_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import GRUB Theme Archive",
+            "",
+            "Theme Archives (*.tar.gz *.tgz *.zip);;All Files (*)"
+        )
+        if not archive_path:
+            return
+
+        dest_dir = Path.home() / ".cache" / "grub-forge" / "imported_themes"
+        ok, disc, msg = ThemePackager.import_theme(Path(archive_path), dest_dir)
+        if ok and disc:
+            self.drawer.append_log(f"[✓] {msg}")
+            card = PresetCard(
+                preset_id=disc.id,
+                name=disc.name,
+                description=f"Imported Theme ({disc.directory.name})",
+                primary_color=disc.colors.desktop_background,
+                accent_color=disc.colors.highlight_border,
+                is_active=True,
+                wallpaper_path=disc.wallpaper_path
+            )
+            card.selected.connect(lambda pid, d=disc: self._on_discovered_theme_selected(d))
+            self._preset_cards.append(card)
+            self.themes_container_layout.insertWidget(0, card)
+            self._on_discovered_theme_selected(disc)
+            QMessageBox.information(self, "Theme Imported", f"Successfully imported and activated theme:\n{disc.name}")
+        else:
+            self.drawer.append_log(f"[!] Theme import failed: {msg}")
+            QMessageBox.critical(self, "Import Error", f"Could not import theme:\n{msg}")
+
+    # =========================================================================
+    # VIEWPORT TOOLBAR ACTIONS
+    # =========================================================================
 
     def _toggle_preview_playback(self):
-        playing = self.canvas.toggle_preview_playback()
-        self.btn_play_preview.setText("⏸ Pause Timer" if playing else "▶ Play Boot Timer")
+        is_playing = self.canvas.toggle_preview_playback()
+        if is_playing:
+            self.btn_play_preview.setText("⏸ Pause Timer")
+            self.drawer.append_log("[*] Simulating boot timeout countdown...")
+        else:
+            self.btn_play_preview.setText("▶ Play Boot Timer")
 
     def _reset_preview(self):
         self.canvas.reset_preview()
         self.btn_play_preview.setText("▶ Play Boot Timer")
+        self.drawer.append_log("[*] Reset preview canvas state.")
 
     def _reload_grub_cfg(self):
+        self.drawer.append_log("[*] Reloading active boot entries from grub.cfg...")
         entries = GrubMenuParser.parse_entries(
             self.telemetry.paths.active_grub_cfg,
             fallback_distro=self.telemetry.distro.name
@@ -793,10 +1209,10 @@ class MainWindow(QMainWindow):
         for idx, entry in enumerate(entries):
             self.combo_default_os.addItem(entry, idx)
         self._sync_state_to_canvas()
-        self.drawer.append_log(f"[+] Loaded {len(entries)} entries from {self.telemetry.paths.active_grub_cfg.name}")
+        self.drawer.append_log(f"[✓] Loaded {len(entries)} bootloader entries.")
 
     # =========================================================================
-    # TRANSACTIONAL EXECUTION & SAFETY WORKFLOWS
+    # ELEVATED EXECUTION PIPELINE & SAFETY ACTIONS
     # =========================================================================
 
     def _show_emergency_dialog(self):
@@ -938,7 +1354,6 @@ class MainWindow(QMainWindow):
         dry_run = self.telemetry.distro.is_mock or not sys.platform.startswith("linux")
 
         try:
-            # 1. Unprivileged user-space staging
             self.drawer.append_log("[*] Phase 1/2: Preparing assets and configuration in user space (~/.cache/grub-forge/staged/)...")
             staging_mgr = StagingManager()
             staged_dir = staging_mgr.prepare_staged_payload(
@@ -953,56 +1368,36 @@ class MainWindow(QMainWindow):
                 enable_os_prober=self.chk_os_prober.isChecked(),
                 dry_run=dry_run
             )
-            self.drawer.append_log(f"[✓] User-space assets staged with SHA256 checksums at: {staged_dir}")
 
-            # 2. Trigger Elevated Worker via pkexec
-            self.drawer.append_log("[*] Phase 2/2: Launching isolated root deployment worker via pkexec...")
-            self.executor.execute_staged_deployment(
-                staged_dir=staged_dir,
-                use_pkexec=True,
-                dry_run=dry_run
-            )
+            self.drawer.append_log(f"[✓] Payload staged at: {staged_dir}")
+
+            self.drawer.append_log("[*] Phase 2/2: Launching isolated elevated worker...")
+            self.executor.apply_staged_theme(staged_dir=staged_dir, dry_run=dry_run)
 
         except Exception as e:
-            self.drawer.append_log(f"[!] Staging exception: {e}")
-            self.drawer.set_status("FAILED", "#f38ba8")
             self.drawer.set_running_state(False)
-            QMessageBox.critical(self, "Staging Error", f"Failed to prepare staged assets:\n{e}")
-            self.drawer.set_running_state(False)
-            QMessageBox.critical(self, "Execution Error", f"Failed to apply GRUB theme:\n{e}\nConfiguration has been automatically restored.")
+            self.drawer.set_status("ERROR", "#f38ba8")
+            self.drawer.append_log(f"[!] Staging failed: {e}")
+            QMessageBox.critical(self, "Staging Error", f"Failed to prepare staged payload:\n{e}")
 
-    def _on_execution_finished(self, success: bool, output: str):
+    def _on_execution_finished(self, success: bool, message: str):
         self.drawer.set_running_state(False)
         if success:
-            self.drawer.set_status("SUCCESS", "#a6e3a1")
-            self.drawer.append_log("[✓] === [TRANSACTION COMPLETED SUCCESSFULLY] ===")
-
-            reboot_box = QMessageBox(self)
-            reboot_box.setWindowTitle("GRUB Forge - Success")
-            reboot_box.setText(
-                "<h3>GRUB successfully configured and verified!</h3>"
-                "<p>Your new bootloader theme is active for the next boot.<br>"
-                "Would you like to restart the computer now to verify changes?</p>"
-            )
-            reboot_box.setIcon(QMessageBox.Icon.Information)
-            reboot_btn = reboot_box.addButton("Reboot Now", QMessageBox.ButtonRole.AcceptRole)
-            later_btn = reboot_box.addButton("Reboot Later", QMessageBox.ButtonRole.RejectRole)
-            reboot_box.exec()
-
-            if reboot_box.clickedButton() == reboot_btn:
-                self.drawer.append_log("[*] Triggering system restart...")
-                if not CommandExecutor.trigger_reboot():
-                    QMessageBox.warning(
-                        self, "Reboot", "Automatic reboot request was not handled by system manager. Please reboot manually."
-                    )
-        else:
-            self.drawer.set_status("FAILED", "#f38ba8")
-            self.drawer.append_log("[!] Bootloader update command returned an error.")
-            self.drawer.append_log("[*] Reverting to last known good snapshot...")
-            self.safety.rollback()
-            QMessageBox.warning(
+            self.drawer.set_status("READY", "#a6e3a1")
+            self.drawer.append_log(f"\n[✓] Transaction completed successfully: {message}")
+            QMessageBox.information(
                 self,
-                "Update Command Failed",
-                "The bootloader update command returned an error code.\n\n"
-                "Guardrail triggered: System was automatically rolled back to the previous snapshot."
+                "GRUB Rebuilt Successfully",
+                "Your GRUB bootloader configuration and theme were updated.\n\n"
+                "A recovery snapshot was archived in /boot/grub/grub_forge_backups/.\n"
+                "You can test the changes immediately with 'Test in Virtual Machine' or reboot."
+            )
+        else:
+            self.drawer.set_status("ERROR", "#f38ba8")
+            self.drawer.append_log(f"\n[!] Transaction failed: {message}")
+            QMessageBox.critical(
+                self,
+                "Bootloader Update Failed",
+                f"An error occurred while updating GRUB:\n\n{message}\n\n"
+                "System guardrails automatically engaged. Your previous configuration remains safe."
             )

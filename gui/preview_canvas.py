@@ -202,8 +202,18 @@ class GrubMenuGraphicItem(QGraphicsObject):
                 painter.setFont(item_font)
                 painter.setPen(QColor(self.state.colors.item_color))
 
+            # Distro Icon Rendering (Kali, Arch, Debian, Fedora, Ubuntu, Windows, Linux)
+            icon_pix = canvas_view.get_distro_icon(entry_text) if canvas_view else None
+            text_x_offset = 14 * scale_ref
+            if icon_pix and not icon_pix.isNull():
+                icon_size = max(16, int(22 * scale_ref))
+                icon_y = entry_rect.y() + (entry_rect.height() - icon_size) / 2.0
+                icon_rect = QRectF(entry_rect.x() + (12 * scale_ref), icon_y, icon_size, icon_size)
+                painter.drawPixmap(icon_rect.toRect(), icon_pix)
+                text_x_offset = (12 * scale_ref) + icon_size + (10 * scale_ref)
+
             # Entry label text
-            text_rect = QRectF(entry_rect.x() + (14 * scale_ref), entry_rect.y(), entry_rect.width() - (28 * scale_ref), entry_rect.height())
+            text_rect = QRectF(entry_rect.x() + text_x_offset, entry_rect.y(), entry_rect.width() - text_x_offset - (10 * scale_ref), entry_rect.height())
             metrics = painter.fontMetrics()
             elided = metrics.elidedText(entry_text, Qt.TextElideMode.ElideRight, int(text_rect.width()))
             painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, elided)
@@ -248,6 +258,10 @@ class BootPreviewCanvas(QGraphicsView):
         self._cached_bg_pixmap: Optional[QPixmap] = None
         self._cached_raw_img: Optional[Image.Image] = None
 
+        # Distro icons cache
+        self._distro_icons: dict[str, QPixmap] = {}
+        self._load_distro_icons()
+
         # Authentic GRUB Bitmap Slices
         self._slice_hl_w: Optional[QPixmap] = None
         self._slice_hl_c: Optional[QPixmap] = None
@@ -265,6 +279,32 @@ class BootPreviewCanvas(QGraphicsView):
         self._elapsed_ms = 0
 
         self.apply_state(self.state)
+
+    def _load_distro_icons(self):
+        icons_dir = Path(__file__).resolve().parent.parent / "data" / "icons" / "distros"
+        if icons_dir.is_dir():
+            for p in icons_dir.glob("*.png"):
+                pix = QPixmap(str(p))
+                if not pix.isNull():
+                    self._distro_icons[p.stem.lower()] = pix
+
+    def get_distro_icon(self, entry_text: str) -> Optional[QPixmap]:
+        t = entry_text.lower()
+        if "kali" in t:
+            return self._distro_icons.get("kali")
+        elif "arch" in t:
+            return self._distro_icons.get("arch")
+        elif "debian" in t:
+            return self._distro_icons.get("debian")
+        elif "fedora" in t:
+            return self._distro_icons.get("fedora")
+        elif "ubuntu" in t:
+            return self._distro_icons.get("ubuntu")
+        elif "windows" in t:
+            return self._distro_icons.get("windows")
+        elif any(k in t for k in ("uefi", "firmware", "setup", "settings", "bios")):
+            return self._distro_icons.get("gear")
+        return self._distro_icons.get("linux")
 
     def load_slices_from_dir(self, theme_dir: Path):
         """Loads optional GRUB bitmap slices for highlights and progress bars."""
