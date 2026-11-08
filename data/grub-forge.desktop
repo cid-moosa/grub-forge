@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=GRUB Forge
+GenericName=Bootloader Theme Architect
+Comment=Visual GRUB2 Theme Customizer & Safe Rebuilder
+Exec=grub-forge %U
+Icon=grub-forge
+Terminal=false
+Categories=System;Settings;HardwareSettings;
+Keywords=grub;boot;bootloader;theme;uefi;recovery;kernel;
+StartupNotify=true
+StartupWMClass=grub-forge
+X-GNOME-UsesNotifications=true

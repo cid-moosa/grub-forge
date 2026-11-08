@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#181825"/>
+      <stop offset="100%" stop-color="#11111b"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#89b4fa"/>
+      <stop offset="100%" stop-color="#74c7ec"/>
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#cba6f7"/>
+      <stop offset="100%" stop-color="#89b4fa"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Base App Frame -->
+  <rect width="256" height="256" rx="52" fill="url(#bgGrad)"/>
+  <rect x="12" y="12" width="232" height="232" rx="42" fill="none" stroke="#313244" stroke-width="4"/>
+
+  <!-- Simulated Boot Menu Display Screen -->
+  <rect x="36" y="36" width="184" height="184" rx="20" fill="#1e1e2e" stroke="#45475a" stroke-width="3"/>
+
+  <!-- Top Menu Prompt Header -->
+  <rect x="56" y="58" width="80" height="12" rx="6" fill="#89b4fa"/>
+  <circle cx="180" cy="64" r="5" fill="#a6e3a1"/>
+  <circle cx="194" cy="64" r="5" fill="#f9e2af"/>
+
+  <!-- Menu Entry Items -->
+  <rect x="56" y="86" width="144" height="26" rx="6" fill="#313244" stroke="#89b4fa" stroke-width="2"/>
+  <circle cx="70" cy="99" r="4" fill="#89b4fa"/>
+  <rect x="82" y="94" width="70" height="10" rx="4" fill="#cdd6f4"/>
+
+  <rect x="56" y="120" width="144" height="22" rx="6" fill="#181825"/>
+  <rect x="82" y="126" width="55" height="10" rx="4" fill="#a6adc8"/>
+
+  <rect x="56" y="148" width="144" height="22" rx="6" fill="#181825"/>
+  <rect x="82" y="154" width="65" height="10" rx="4" fill="#a6adc8"/>
+
+  <!-- Stylized Cyber Wrench / Forge Spark Motif -->
+  <g transform="translate(140, 140) rotate(-25)">
+    <!-- Wrench Head -->
+    <path d="M 30 10 L 45 25 L 35 35 L 20 20 Z" fill="url(#glowGrad)"/>
+    <!-- Wrench Handle -->
+    <rect x="15" y="25" width="12" height="42" rx="5" fill="url(#accentGrad)"/>
+    <!-- Forge Spark -->
+    <circle cx="50" cy="8" r="6" fill="#f9e2af"/>
+    <circle cx="62" cy="18" r="3" fill="#a6e3a1"/>
+  </g>
+
+  <!-- Bottom Countdown Bar -->
+  <rect x="56" y="186" width="144" height="6" rx="3" fill="#313244"/>
+  <rect x="56" y="186" width="96" height="6" rx="3" fill="url(#accentGrad)"/>
+</svg>

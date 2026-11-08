@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+  <vendor>GRUB Forge Project</vendor>
+  <vendor_url>https://github.com/grub-forge/grub-forge</vendor_url>
+
+  <action id="org.grubforge.apply">
+    <description>Apply GRUB bootloader customization</description>
+    <message>Authentication is required to safely customize and rebuild the GRUB bootloader</message>
+    <icon_name>grub-forge</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/grub-forge-worker</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">false</annotate>
+  </action>
+
+</policyconfig>

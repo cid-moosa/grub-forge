@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# GRUB Forge - Desktop Application Launcher Wrapper
+# Resolves application root, activates local virtualenvs if present,
+# enforces High-DPI Qt display attributes, and forwards CLI parameters.
+# ==============================================================================
+
+set -e
+
+# Resolve absolute path of this script, following symlinks
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+    DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+BIN_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+APP_ROOT="$(cd -P "$BIN_DIR/.." >/dev/null 2>&1 && pwd)"
+
+# High-DPI display scaling support for PyQt6
+export QT_ENABLE_HIGHDPI_SCALING=1
+export QT_AUTO_SCREEN_SCALE_FACTOR=1
+export PYTHONPATH="${APP_ROOT}:${PYTHONPATH}"
+
+# Resolve Python interpreter (check local venvs first, fallback to system python3)
+PYTHON_BIN="python3"
+if [ -f "${APP_ROOT}/.venv/bin/python3" ]; then
+    PYTHON_BIN="${APP_ROOT}/.venv/bin/python3"
+elif [ -f "${APP_ROOT}/env/bin/python3" ]; then
+    PYTHON_BIN="${APP_ROOT}/env/bin/python3"
+elif [ -f "${APP_ROOT}/venv/bin/python3" ]; then
+    PYTHON_BIN="${APP_ROOT}/venv/bin/python3"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="$(command -v python3)"
+else
+    echo "ERROR: python3 could not be found in PATH." >&2
+    exit 1
+fi
+
+exec "$PYTHON_BIN" "${APP_ROOT}/app.py" "$@"
