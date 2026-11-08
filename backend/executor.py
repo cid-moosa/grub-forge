@@ -148,6 +148,10 @@ class CommandExecutor(QObject):
         self._current_worker.finished.connect(self._on_worker_completed)
         self._current_worker.start()
 
+    def apply_staged_theme(self, staged_dir: Path, use_pkexec: bool = True, dry_run: bool = False):
+        """Alias for execute_staged_deployment called by GUI main window."""
+        self.execute_staged_deployment(staged_dir=staged_dir, use_pkexec=use_pkexec, dry_run=dry_run)
+
     def _on_worker_completed(self, exit_code: int, logs: str):
         success = (exit_code == 0)
         self.operation_finished.emit(success, logs)

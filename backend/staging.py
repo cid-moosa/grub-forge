@@ -170,9 +170,9 @@ terminal-font: "Unifont Regular 14"
         theme_txt_file.write_text(theme_txt_content, encoding="utf-8")
 
         # 5. Stage staged_default_grub via AST parser
+        # GRUB_THEME in /etc/default/grub must be the full Linux host path (/boot/grub/themes/...)
+        # grub-mkconfig verifies [ -f "$GRUB_THEME" ] in userspace and handles root translation internally.
         target_theme_txt_in_grub = str(telemetry.paths.theme_dir / theme_name / "theme.txt")
-        if telemetry.fs.is_separate_boot and target_theme_txt_in_grub.startswith("/boot/"):
-            target_theme_txt_in_grub = target_theme_txt_in_grub[len("/boot"):]
 
         res_str = f"{resolution[0]}x{resolution[1]}"
         updates = {

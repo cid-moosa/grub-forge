@@ -1,0 +1,35 @@
+# GRUB Forge Theme Configuration - Cyber_glow
+title-text: "GRUB Boot Menu"
+title-font: "Unifont Regular 18"
+title-color: "#89b4fa"
+desktop-image: "background.png"
+desktop-color: "#11111b"
+message-font: "Unifont Regular 14"
+message-color: "#cdd6f4"
+terminal-font: "Unifont Regular 14"
+
++ boot_menu {
+    left = 20%
+    top = 25%
+    width = 60%
+    height = 50%
+    item_font = "Unifont Regular 16"
+    item_color = "#cdd6f4"
+    selected_item_font = "Unifont Bold 16"
+    selected_item_color = "#ffffff"
+    selected_item_pixmap_style = "highlight_*.png"
+    item_height = 36
+    item_padding = 8
+    item_spacing = 6
+}
+
++ label {
+    top = 78%
+    left = 20%
+    width = 60%
+    align = "center"
+    id = "__timeout__"
+    text = "The highlighted entry will be executed automatically in %d seconds."
+    color = "#89b4fa"
+    font = "Unifont Regular 14"
+}

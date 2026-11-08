@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from backend.executor import CommandExecutor
 from backend.fs_detector import DistroInfo, FSDetector, GrubPaths, GrubTools
 from backend.safety import ASTGrubParser, SafetyManager
 from backend.theme_engine import ThemeColors, ThemeEngine, AssetProcessor, PRESETS
@@ -237,6 +238,13 @@ class TestThemeScanner(unittest.TestCase):
             self.assertEqual(detected.wallpaper_path, bg_png)
             self.assertEqual(detected.colors.item_color, "#ffffff")
             self.assertEqual(detected.colors.selected_item_color, "#00ffcc")
+
+
+class TestExecutorAndWorker(unittest.TestCase):
+    def test_command_executor_method_contract(self):
+        executor = CommandExecutor()
+        self.assertTrue(hasattr(executor, "apply_staged_theme"))
+        self.assertTrue(hasattr(executor, "execute_staged_deployment"))
 
 
 if __name__ == "__main__":

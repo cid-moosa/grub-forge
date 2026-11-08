@@ -141,35 +141,38 @@ class MainWindow(QMainWindow):
 
         self.theme_state = ThemeState()
 
+        d_id = (self.telemetry.distro.distro_id or "").lower()
+        if "kali" in d_id:
+            default_preset_id = "kali_dragon"
+        elif "arch" in d_id:
+            default_preset_id = "arch_minimal"
+        elif "fedora" in d_id or "rhel" in d_id:
+            default_preset_id = "fedora_blue"
+        elif "debian" in d_id:
+            default_preset_id = "debian_crimson"
+        elif "ubuntu" in d_id:
+            default_preset_id = "ubuntu_yaru"
+        elif "suse" in d_id:
+            default_preset_id = "emerald_matrix"
+        else:
+            default_preset_id = "kali_dragon"
+
+        distro_preset = PRESETS.get(default_preset_id, PRESETS["kali_dragon"])
+
         if self.current_system_theme:
             self.init_preset_id = self.current_system_theme.id
             self.theme_state.colors = self.current_system_theme.colors
             self.theme_state.title_text = self.current_system_theme.title_text
             if self.current_system_theme.wallpaper_path and self.current_system_theme.wallpaper_path.is_file():
                 self.theme_state.wallpaper_path = self.current_system_theme.wallpaper_path
+            elif distro_preset.wallpaper_path and distro_preset.wallpaper_path.is_file():
+                self.theme_state.wallpaper_path = distro_preset.wallpaper_path
         else:
-            d_id = (self.telemetry.distro.distro_id or "").lower()
-            if "kali" in d_id:
-                init_preset_id = "kali_dragon"
-            elif "arch" in d_id:
-                init_preset_id = "arch_minimal"
-            elif "fedora" in d_id or "rhel" in d_id:
-                init_preset_id = "fedora_blue"
-            elif "debian" in d_id:
-                init_preset_id = "debian_crimson"
-            elif "ubuntu" in d_id:
-                init_preset_id = "ubuntu_yaru"
-            elif "suse" in d_id:
-                init_preset_id = "emerald_matrix"
-            else:
-                init_preset_id = "kali_dragon"
-
-            self.init_preset_id = init_preset_id
-            preset = PRESETS.get(init_preset_id, PRESETS["kali_dragon"])
-            self.theme_state.colors = preset.colors
-            self.theme_state.title_text = preset.title_text
-            if preset.wallpaper_path and preset.wallpaper_path.is_file():
-                self.theme_state.wallpaper_path = preset.wallpaper_path
+            self.init_preset_id = default_preset_id
+            self.theme_state.colors = distro_preset.colors
+            self.theme_state.title_text = distro_preset.title_text
+            if distro_preset.wallpaper_path and distro_preset.wallpaper_path.is_file():
+                self.theme_state.wallpaper_path = distro_preset.wallpaper_path
 
         # Parse authentic boot menu entries
         self.theme_state.entries = GrubMenuParser.parse_entries(
@@ -1310,6 +1313,9 @@ class MainWindow(QMainWindow):
         self.col_selected.set_color(disc.colors.selected_item_color)
         self.col_hl_bg.set_color(disc.colors.highlight_background)
         self.col_hl_border.set_color(disc.colors.highlight_border)
+
+        if disc.directory and disc.directory.is_dir():
+            self.canvas.load_slices_from_dir(disc.directory)
 
         self._sync_state_to_canvas()
         self.drawer.append_log(f"[+] Loaded installed theme: {disc.name}")

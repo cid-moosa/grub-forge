@@ -315,6 +315,108 @@ def generate_distro_icons(icons_dir: Path):
     im.save(icons_dir / "gear.png")
 
 
+def generate_theme_configs(themes_dir: Path):
+    """Generates theme.txt and slice graphics for each bundled theme."""
+    configs = {
+        "kali": {
+            "title": "Kali GNU/Linux (Rolling)",
+            "title_color": "#00f5d4",
+            "desktop_color": "#080c16",
+            "item_color": "#cdd6f4",
+            "selected_item_color": "#ffffff",
+            "hl_bg": "#0077b6",
+            "hl_border": "#00f5d4",
+        },
+        "arch": {
+            "title": "Arch Linux",
+            "title_color": "#1793d1",
+            "desktop_color": "#0e1018",
+            "item_color": "#a6adc8",
+            "selected_item_color": "#ffffff",
+            "hl_bg": "#1e2230",
+            "hl_border": "#1793d1",
+        },
+        "debian": {
+            "title": "Debian GNU/Linux 12 (Bookworm)",
+            "title_color": "#d70a53",
+            "desktop_color": "#101018",
+            "item_color": "#cdd6f4",
+            "selected_item_color": "#ffffff",
+            "hl_bg": "#2b111e",
+            "hl_border": "#d70a53",
+        },
+        "fedora": {
+            "title": "Fedora Linux 41",
+            "title_color": "#51a2da",
+            "desktop_color": "#0a1424",
+            "item_color": "#cdd6f4",
+            "selected_item_color": "#ffffff",
+            "hl_bg": "#142d4c",
+            "hl_border": "#51a2da",
+        },
+        "ubuntu": {
+            "title": "Ubuntu 24.04 LTS",
+            "title_color": "#e95420",
+            "desktop_color": "#181016",
+            "item_color": "#cdd6f4",
+            "selected_item_color": "#ffffff",
+            "hl_bg": "#3c1828",
+            "hl_border": "#e95420",
+        },
+        "cyber_glow": {
+            "title": "GRUB Boot Menu",
+            "title_color": "#89b4fa",
+            "desktop_color": "#11111b",
+            "item_color": "#cdd6f4",
+            "selected_item_color": "#ffffff",
+            "hl_bg": "#313244",
+            "hl_border": "#89b4fa",
+        }
+    }
+
+    for tid, cfg in configs.items():
+        tdir = themes_dir / tid
+        tdir.mkdir(parents=True, exist_ok=True)
+        txt_path = tdir / "theme.txt"
+        theme_body = f"""# GRUB Forge Theme Configuration - {tid.capitalize()}
+title-text: "{cfg['title']}"
+title-font: "Unifont Regular 18"
+title-color: "{cfg['title_color']}"
+desktop-image: "background.png"
+desktop-color: "{cfg['desktop_color']}"
+message-font: "Unifont Regular 14"
+message-color: "{cfg['item_color']}"
+terminal-font: "Unifont Regular 14"
+
++ boot_menu {{
+    left = 20%
+    top = 25%
+    width = 60%
+    height = 50%
+    item_font = "Unifont Regular 16"
+    item_color = "{cfg['item_color']}"
+    selected_item_font = "Unifont Bold 16"
+    selected_item_color = "{cfg['selected_item_color']}"
+    selected_item_pixmap_style = "highlight_*.png"
+    item_height = 36
+    item_padding = 8
+    item_spacing = 6
+}}
+
++ label {{
+    top = 78%
+    left = 20%
+    width = 60%
+    align = "center"
+    id = "__timeout__"
+    text = "The highlighted entry will be executed automatically in %d seconds."
+    color = "{cfg['title_color']}"
+    font = "Unifont Regular 14"
+}}
+"""
+        txt_path.write_text(theme_body, encoding="utf-8")
+
+
 if __name__ == "__main__":
     base = Path(__file__).parent
     themes = base / "themes"
@@ -325,4 +427,5 @@ if __name__ == "__main__":
     create_ubuntu_wallpaper(themes / "ubuntu" / "background.png")
     create_cyber_glow_wallpaper(themes / "cyber_glow" / "background.png")
     generate_distro_icons(base / "icons" / "distros")
+    generate_theme_configs(themes)
     print("Assets successfully generated!")

@@ -41,14 +41,21 @@ class ThemeScanner:
         Path("/boot/grub2/themes"),
         Path("/usr/share/grub/themes"),
         Path("/usr/local/share/grub/themes"),
+        Path("/usr/share/desktop-base/kali-theme/grub"),
+        Path("/usr/share/desktop-base/active-theme/grub"),
+        Path("/usr/share/images/desktop-base"),
+        Path("/boot/grub"),
+        Path("/boot/grub2"),
     ]
 
     def __init__(self, search_paths: Optional[List[Path]] = None, root_prefix: str = ""):
         self.root_prefix = root_prefix
+        paths = list(self.DEFAULT_THEME_PATHS)
         if search_paths:
-            self.search_paths = search_paths
-        else:
-            self.search_paths = [self._apply_prefix(p) for p in self.DEFAULT_THEME_PATHS]
+            for sp in search_paths:
+                if sp and sp not in paths:
+                    paths.insert(0, sp)
+        self.search_paths = [self._apply_prefix(p) for p in paths]
 
     def _apply_prefix(self, p: Path) -> Path:
         if not self.root_prefix:
@@ -65,6 +72,12 @@ class ThemeScanner:
                 continue
 
             try:
+                # Direct check if root itself is a theme directory (e.g. /usr/share/grub/themes/kali)
+                if (root / "theme.txt").is_file():
+                    parsed = self.parse_theme_txt(root, root / "theme.txt")
+                    if parsed and parsed.id not in discovered:
+                        discovered[parsed.id] = parsed
+
                 for entry in root.iterdir():
                     if entry.is_dir():
                         theme_file = entry / "theme.txt"
@@ -121,23 +134,47 @@ class ThemeScanner:
 
         wallpaper_path = None
         if desktop_img_name:
-            cand = theme_dir / desktop_img_name
-            if cand.is_file():
-                wallpaper_path = cand
-            else:
-                # Case-insensitive lookup
-                for f in theme_dir.iterdir():
-                    if f.name.lower() == desktop_img_name.lower() and f.is_file():
-                        wallpaper_path = f
-                        break
+            candidates = [
+                theme_dir / desktop_img_name,
+                Path(desktop_img_name),
+                self._apply_prefix(Path(desktop_img_name)),
+            ]
+            for cand in candidates:
+                if cand.is_file():
+                    wallpaper_path = cand
+                    break
+
+            if not wallpaper_path:
+                # Case-insensitive lookup in theme directory
+                try:
+                    for f in theme_dir.iterdir():
+                        if f.name.lower() == desktop_img_name.lower() and f.is_file():
+                            wallpaper_path = f
+                            break
+                except Exception:
+                    pass
 
         if not wallpaper_path:
-            # Fallback search for common background image filenames
-            for pattern in ("*background*", "*bg*", "*wallpaper*", "*.png", "*.jpg", "*.jpeg", "*.tga"):
-                matches = [f for f in theme_dir.glob(pattern) if f.is_file() and not f.name.startswith("bar_") and not f.name.startswith("highlight_") and not f.name.startswith("select_")]
-                if matches:
-                    wallpaper_path = matches[0]
+            # Fallback search for common background image filenames (e.g. grub-16x9.png in Kali)
+            for common_name in ("grub-16x9.png", "grub-4x3.png", "background.png", "background.jpg", "bg.png", "bg.jpg", "desktop-grub.png", "starfield.png", "splash.png"):
+                cand = theme_dir / common_name
+                if cand.is_file():
+                    wallpaper_path = cand
                     break
+
+        if not wallpaper_path:
+            # Fallback search for any background image
+            try:
+                for pattern in ("*background*", "*bg*", "*wallpaper*", "*16x9*", "*.png", "*.jpg", "*.jpeg", "*.tga"):
+                    matches = [
+                        f for f in theme_dir.glob(pattern)
+                        if f.is_file() and not any(f.name.startswith(pfx) for pfx in ("bar_", "highlight_", "select_", "terminal_", "menu_", "progress_", "slider_"))
+                    ]
+                    if matches:
+                        wallpaper_path = matches[0]
+                        break
+            except Exception:
+                pass
 
         colors = ThemeColors(
             desktop_background=desktop_color if desktop_color.startswith("#") else "#1e1e2e",
@@ -168,8 +205,8 @@ class ThemeScanner:
         """
         Fetches the current active GRUB boot theme from the system files:
         1. Checks GRUB_THEME or GRUB_BACKGROUND in /etc/default/grub.
-        2. Scans system theme directories (/boot/grub/themes, /usr/share/grub/themes) for distro themes.
-        3. Returns the active theme with its real background image, colors, and layout.
+        2. Scans system theme directories (/boot/grub/themes, /usr/share/grub/themes, /usr/share/desktop-base) for distro themes.
+        3. Falls back smoothly to authentic bundled distribution assets if system theme is not found.
         """
         # 1. Inspect /etc/default/grub for GRUB_THEME
         if default_grub_path and default_grub_path.is_file():
@@ -189,17 +226,22 @@ class ThemeScanner:
                         bg_val = val.strip().strip('"').strip("'")
 
                 if theme_val:
-                    t_path = self._apply_prefix(Path(theme_val))
-                    if t_path.is_file():
-                        theme = self.parse_theme_txt(t_path.parent, t_path)
-                        if theme:
-                            theme.name = f"{theme.name} (Active System Theme)"
-                            return theme
-                    elif t_path.is_dir() and (t_path / "theme.txt").is_file():
-                        theme = self.parse_theme_txt(t_path, t_path / "theme.txt")
-                        if theme:
-                            theme.name = f"{theme.name} (Active System Theme)"
-                            return theme
+                    t_candidates = [
+                        self._apply_prefix(Path(theme_val)),
+                        Path(theme_val),
+                        Path("/usr/share/grub/themes") / Path(theme_val).parent.name / "theme.txt"
+                    ]
+                    for cand in t_candidates:
+                        if cand.is_file():
+                            theme = self.parse_theme_txt(cand.parent, cand)
+                            if theme:
+                                theme.name = f"{theme.name} (Active System Theme)"
+                                return theme
+                        elif cand.is_dir() and (cand / "theme.txt").is_file():
+                            theme = self.parse_theme_txt(cand, cand / "theme.txt")
+                            if theme:
+                                theme.name = f"{theme.name} (Active System Theme)"
+                                return theme
 
                 if bg_val:
                     b_path = self._apply_prefix(Path(bg_val))
@@ -226,6 +268,11 @@ class ThemeScanner:
                     t_id = t.id.lower()
                     if d_clean in t_id or t_id in d_clean:
                         t.name = f"{t.name} (Installed Distro Theme)"
+                        # Ensure wallpaper is resolved
+                        if not t.wallpaper_path or not t.wallpaper_path.is_file():
+                            bundled_fallback = Path(__file__).resolve().parent.parent / "data" / "themes" / d_clean / "background.png"
+                            if bundled_fallback.is_file():
+                                t.wallpaper_path = bundled_fallback
                         return t
 
             # Fallback to the first installed theme found on disk
