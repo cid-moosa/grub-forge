@@ -189,6 +189,7 @@ class FSDetector:
         # Mock fallback for development / non-Linux host testing
         mock_id = mock_env.lower() if mock_env else "arch"
         mock_names = {
+            "kali": ("Kali GNU/Linux (Rolling)", ["kali", "debian"]),
             "debian": ("Debian GNU/Linux 12 (bookworm)", ["debian"]),
             "arch": ("Arch Linux", ["arch"]),
             "fedora": ("Fedora Linux 41 (Workstation Edition)", ["fedora", "rhel"]),
